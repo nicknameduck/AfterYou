@@ -1,0 +1,12 @@
+{
+  "name": "afteryou-harness-dashboard",
+  "version": "1.0.0",
+  "description": "AfterYou 하네스 모니터링 대시보드",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Cat Harness Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 타이틀 바 -->
+  <div class="titlebar">
+    <span class="titlebar-title">🐱 Cat Tower Defence — Harness</span>
+    <div class="titlebar-buttons">
+      <button id="btn-minimize">─</button>
+      <button id="btn-close">✕</button>
+    </div>
+  </div>
+
+  <!-- 진행상황 바 -->
+  <div class="topbar">
+    <div class="topbar-info">
+      <span id="progress-text">로딩 중...</span>
+      <div class="topbar-badges">
+        <span id="phase-badge" class="phase-badge hidden"></span>
+      </div>
+    </div>
+    <div class="progress-track">
+      <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- 메인 콘텐츠 -->
+  <div class="main-content">
+
+    <!-- ─── 상단: 3개 룸 ─────────────────── -->
+    <div class="rooms-section">
+
+      <!-- 기획실 -->
+      <div class="room room-planning">
+        <div class="room-title">기획실</div>
+        <div class="room-body">
+          <div class="whiteboard">
+            <div class="whiteboard-header">DISCUSSION</div>
+            <div id="wb-content" class="wb-content">안건 없음 ✓</div>
+          </div>
+        </div>
+        <div class="room-entrance">
+          <span class="entrance-label">입구</span>
+        </div>
+      </div>
+
+      <div class="room-wall"></div>
+
+      <!-- 개발실 -->
+      <div class="room room-computer">
+        <div class="room-title">개발실</div>
+        <div class="room-body">
+          <div class="comp-area">
+            <div class="monitor-wrap">
+              <div class="monitor-frame">
+                <div class="monitor-screen">
+                  <div id="monitor-task" class="monitor-task">—</div>
+                  <div id="monitor-score" class="monitor-score"></div>
+                </div>
+              </div>
+              <div class="monitor-stand"></div>
+              <div class="monitor-base"></div>
+            </div>
+          </div>
+        </div>
+        <div class="room-entrance">
+          <span class="entrance-label">입구</span>
+        </div>
+      </div>
+
+      <div class="room-wall"></div>
+
+      <!-- 평가 -->
+      <div class="room room-evaluation">
+        <div class="room-title">평가</div>
+        <div class="room-body">
+          <div class="eval-board">
+            <div id="eval-stars" class="eval-stars">☆☆☆</div>
+            <div id="eval-score" class="eval-score">—</div>
+            <div id="eval-result" class="eval-result waiting">대기 중</div>
+            <div id="eval-task" class="eval-task"></div>
+          </div>
+        </div>
+        <div class="room-entrance">
+          <span class="entrance-label">입구</span>
+        </div>
+      </div>
+
+    </div><!-- /rooms-section -->
+
+    <!-- ─── 고양이 (main-content 기준 absolute) ─── -->
+    <div id="cat-container" class="cat-container">
+      <div id="speech-bubble" class="speech-bubble hidden">
+        <span id="speech-text">오늘도 열심히냥~</span>
+      </div>
+      <div id="cat-sprite" class="cat-sprite"></div>
+    </div>
+
+    <!-- ─── 복도 바닥 ─────────────────────── -->
+    <div class="corridor-floor"></div>
+
+    <!-- ─── 하단: 정보 패널 ───────────────── -->
+    <div class="info-section">
+
+      <div class="info-col info-log">
+        <div class="info-label">오늘 로그</div>
+        <div id="today-log-list" class="log-list"></div>
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div class="info-col info-tasks">
+        <div class="info-label">다음 작업</div>
+        <ul id="next-tasks-list" class="tasks-list"></ul>
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div class="info-col info-actions">
+        <button id="btn-discussion" class="action-btn">
+          회의 필요
+          <span id="discussion-count" class="count-badge hidden">0</span>
+        </button>
+        <button id="btn-remaining" class="action-btn">
+          남은 진행 목록
+          <span id="remaining-count" class="count-badge">0</span>
+        </button>
+      </div>
+
+    </div><!-- /info-section -->
+
+    <!-- 회의 팝업 -->
+    <div id="discussion-popup" class="popup hidden">
+      <div class="popup-header">
+        📋 회의 안건
+        <button class="popup-close" id="close-discussion">✕</button>
+      </div>
+      <div id="discussion-popup-list" class="popup-list"></div>
+    </div>
+
+    <!-- 진행 목록 팝업 -->
+    <div id="remaining-popup" class="popup hidden">
+      <div class="popup-header">
+        📝 남은 작업
+        <button class="popup-close" id="close-remaining">✕</button>
+      </div>
+      <div id="remaining-popup-list" class="popup-list"></div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- 명령 입력 바 -->
+  <div class="command-bar">
+    <span class="command-prompt">›</span>
+    <input id="command-input" type="text"
+      placeholder="/harness TASKS.md에서 다음 미완료 항목 구현해줘">
+    <button id="btn-copy" class="btn-copy">복사</button>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
