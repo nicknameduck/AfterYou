@@ -1,0 +1,429 @@
+using System.Collections;
+using System.Collections.Generic;
+using AfterYou.Clone;
+using AfterYou.Core;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+namespace AfterYou.Managers
+{
+    public enum RoundState
+    {
+        /// <summary>다음에 조작할 캐릭터를 고르는 중.</summary>
+        Selecting,
+
+        /// <summary>라이브 캐릭터를 조작 + 녹화 중. 확정된 클론들은 동시에 재생된다.</summary>
+        Recording,
+
+        /// <summary>라이브 캐릭터가 출구에 도달했다.</summary>
+        Cleared
+    }
+
+    /// <summary>
+    /// 라운드 진행의 심장부. "중앙 틱"의 유일한 소유자다.
+    /// </summary>
+    /// <remarks>
+    /// 아키텍처 규약: 클론은 자체 재생 인덱스를 갖지 않는다.
+    /// RoundManager가 FixedUpdate마다 _tick을 1 올리고, 모든 클론이 그 하나의 _tick을 참조한다.
+    /// (클론마다 자체 인덱스를 두면 컴포넌트 실행 순서/활성화 타이밍에 따라 서로 어긋난다)
+    /// </remarks>
+    public class RoundManager : MonoBehaviour
+    {
+        [Header("Characters")]
+        [SerializeField] private CharacterActor[] _characters;
+
+        [Header("Recording")]
+        [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
+        [SerializeField] private float _maxRecordSeconds = 15f;
+
+        [Header("Hierarchy")]
+        [Tooltip("확정된 클론을 이 아래로 reparent해 하이어라키를 정리한다(=== CLONES ===). 되감기 시 원래 부모로 복구.")]
+        [SerializeField] private Transform _clonesParent;
+
+        [Header("Crush Resolve")]
+        [Tooltip("겹친 채로 옆으로 밀려나는 속도(유닛/초). 겹침이 오래 보이면 올리고, 너무 홱 빠지면 내린다.")]
+        [SerializeField] private float _crushEjectSpeed = 10f;
+
+        [Tooltip("클론 X 범위를 벗어난 뒤 추가로 확보할 여유 거리.")]
+        [SerializeField] private float _crushSkin = 0.05f;
+
+        /// <summary>확정된 슬롯 스택. 되감기는 최근 → 과거 순서로만 가능하므로 말단 push/pop만 쓴다.</summary>
+        private readonly List<int> _confirmedSlots = new List<int>();
+
+        /// <summary>되감기 시 클론을 원래 부모(=== PLAYER ===)로 되돌리기 위한 백업.</summary>
+        private readonly Dictionary<int, Transform> _originalParents = new Dictionary<int, Transform>();
+
+        private int _tick;
+        private int _liveIndex = -1;
+        private RoundState _state = RoundState.Selecting;
+
+        /// <summary>현재 라이브를 덮치고 있는 클론 슬롯. 완전히 빠져나올 때까지 래치된다(-1 = 없음).</summary>
+        private int _crushSlot = -1;
+
+        /// <summary>래치된 탈출 방향(-1 = 왼쪽 / +1 = 오른쪽). 밀려나는 도중 방향이 뒤집히지 않게 고정한다.</summary>
+        private float _crushDirection;
+
+        /// <summary>깔리기 시작한 순간의 Y. 빠져나오는 동안 이 아래로는 내려가지 않게 붙잡아 바닥 파고듦을 막는다.</summary>
+        private float _crushLockY;
+
+        public RoundState State => _state;
+
+        public int ConfirmedCount => _confirmedSlots.Count;
+
+        public int SlotCount => _characters != null ? _characters.Length : 0;
+
+        /// <summary>현재 조작 중인 캐릭터. LevelExit이 "클리어는 라이브만" 판정에 쓴다. 없으면 null.</summary>
+        public CharacterActor LiveCharacter =>
+            _liveIndex >= 0 && _liveIndex < _characters.Length ? _characters[_liveIndex] : null;
+
+        /// <summary>시간 상한을 틱 수로 환산. Fixed Timestep이 바뀌어도 따라가도록 하드코딩하지 않는다.</summary>
+        private int MaxTicks => Mathf.CeilToInt(_maxRecordSeconds / Time.fixedDeltaTime);
+
+        public bool IsSlotConfirmed(int index) => _confirmedSlots.Contains(index);
+
+        public bool IsSlotLive(int index) => _state == RoundState.Recording && index == _liveIndex;
+
+        private void Awake()
+        {
+            for (int i = 0; i < _characters.Length; i++)
+                _originalParents[i] = _characters[i].transform.parent;
+        }
+
+        private void Start()
+        {
+            EnterSelecting();
+        }
+
+        private void OnEnable()
+        {
+            StartCoroutine(PostPhysicsRoutine());
+        }
+
+        private void OnDisable()
+        {
+            StopAllCoroutines();
+        }
+
+        /// <summary>
+        /// 물리 시뮬레이션 "직후, 렌더링 직전"에 압사를 해소한다.
+        /// </summary>
+        /// <remarks>
+        /// Unity의 스텝 순서는 [FixedUpdate → 물리 시뮬레이션 → (WaitForFixedUpdate) → 렌더링] 이다.
+        /// FixedUpdate에서 위치를 보정하면 바로 뒤의 시뮬레이션이 라이브를 다시 바닥으로 밀어넣어
+        /// 보정이 무효화되고, 파묻힌 상태 그대로 화면에 그려진다.
+        /// WaitForFixedUpdate 이후는 시뮬레이션이 끝난 시점이라, 여기서 보정하면
+        /// 솔버가 만든 파고듦을 되돌린 뒤 렌더링된다 → 파묻힘이 눈에 보이지 않는다.
+        /// </remarks>
+        private IEnumerator PostPhysicsRoutine()
+        {
+            WaitForFixedUpdate waitForPhysics = new WaitForFixedUpdate();
+
+            while (true)
+            {
+                yield return waitForPhysics;
+
+                if (_state == RoundState.Recording)
+                    ResolveCrush();
+            }
+        }
+
+        private void FixedUpdate()
+        {
+            if (_state != RoundState.Recording) return;
+
+            // 순서 엄수: 재생 → 기록 → 틱 증가.
+            // 같은 _tick에서 클론과 라이브가 동일한 물리 스텝을 공유해야 궤적이 재현된다.
+            //
+            // 압사 해소(ResolveCrush)는 여기가 아니라 "물리 시뮬레이션 이후"에 돈다(PostPhysicsRoutine).
+            // FixedUpdate는 물리 이전이라, 여기서 위치를 보정해봤자 곧바로 이어지는 시뮬레이션이
+            // 라이브를 다시 바닥으로 밀어넣어 되돌려버린다 → 파묻힌 상태가 그대로 렌더링된다.
+            //
+            // 보정이 물리 이후에 적용되므로, 그 결과가 다음 틱 시작 위치가 되고
+            // 아래 2)의 CaptureTick이 그 보정된 위치를 기록한다 → 재생 시에도 동일하게 재현된다.
+
+            // 1) 확정된 클론들을 중앙 틱에 맞춰 재생
+            for (int i = 0; i < _confirmedSlots.Count; i++)
+                _characters[_confirmedSlots[i]].Playback.ApplyTick(_tick);
+
+            // 2) 라이브 캐릭터의 현재 상태를 기록
+            if (_liveIndex >= 0)
+                _characters[_liveIndex].Recorder.CaptureTick(_tick);
+
+            // 3) 틱 증가
+            _tick++;
+
+            // 4) 시간 상한 도달 시 자동 확정
+            if (_tick >= MaxTicks)
+                ConfirmClone();
+        }
+
+        /// <summary>
+        /// 위에서 내려오는 클론에 깔린 라이브를, 겹친 채로 좌/우로 밀어낸다.
+        /// </summary>
+        /// <remarks>
+        /// 왜 필요한가: 클론은 Kinematic + MovePosition이라 "무조건 목표 위치로" 간다. 라이브(Dynamic)가
+        /// 바닥과 클론 사이에 끼면 물리 솔버가 탈출로를 못 찾아 그대로 파고든다.
+        /// 그래서 탈출 방향을 코드가 직접 정해준다.
+        ///
+        /// 설계: 겹침을 "막지 않고" 허용한다. 잠깐 겹쳐 보이더라도 일정한 속도로 스르륵 빠져나오는 쪽이,
+        /// 닿기도 전에 미리 비켜서거나(부자연스러움) 홱 튕겨 나가는 것보다 낫다.
+        ///
+        /// 래치가 핵심: 한 번 깔리면 완전히 빠져나올 때까지 계속 밀어낸다.
+        /// 클론이 덮친 뒤 그 자리에서 멈추면(녹화 종료) 하강 속도가 0이 되는데,
+        /// 그때 밀어내기를 멈추면 라이브가 영원히 파묻힌 채 갇힌다.
+        /// 방향도 함께 래치해 밀려나는 도중에 좌/우가 뒤집히지 않게 한다.
+        ///
+        /// 깔림을 "새로" 인정하는 조건:
+        ///  (a) 실제로 겹쳤다 — 닿기 전에는 건드리지 않는다.
+        ///  (b) 클론이 라이브보다 "위" — 클론 위에 올라선 경우(클론이 아래)는 제외.
+        ///      클론이 점프해 위에 탄 라이브를 들어올리는 건 정상 동작(엘리베이터)이다.
+        ///  (c) 클론이 "내려오는 중" — 라이브가 스스로 클론에 뛰어올라 타려는 걸 밀어내면 안 된다.
+        /// </remarks>
+        private void ResolveCrush()
+        {
+            if (_liveIndex < 0)
+            {
+                _crushSlot = -1;
+                return;
+            }
+
+            CharacterActor live = _characters[_liveIndex];
+            Collider2D liveCollider = live.Collider;
+            if (liveCollider == null) return;
+
+            // 이미 깔려 있던 상태라면, 완전히 빠져나올 때까지 래치된 방향으로 계속 민다.
+            if (_crushSlot >= 0)
+            {
+                CharacterActor latched = _characters[_crushSlot];
+                Collider2D latchedCollider = latched.Collider;
+
+                if (latchedCollider != null && latchedCollider.enabled &&
+                    liveCollider.Distance(latchedCollider).isOverlapped)
+                {
+                    Push(live, liveCollider.bounds, latchedCollider.bounds, _crushDirection);
+                    return;
+                }
+
+                // 빠져나왔다.
+                _crushSlot = -1;
+            }
+
+            // 새로 깔리는 클론을 찾는다.
+            for (int i = 0; i < _confirmedSlots.Count; i++)
+            {
+                int slot = _confirmedSlots[i];
+                CharacterActor clone = _characters[slot];
+                Collider2D cloneCollider = clone.Collider;
+                if (cloneCollider == null || !cloneCollider.enabled) continue;
+
+                // (a) 닿았을 때만
+                if (!liveCollider.Distance(cloneCollider).isOverlapped) continue;
+
+                Bounds liveBounds = liveCollider.bounds;
+                Bounds cloneBounds = cloneCollider.bounds;
+
+                // (b) 클론이 위에 있을 때만
+                if (cloneBounds.center.y <= liveBounds.center.y) continue;
+
+                // (c) 클론이 내려오는 중일 때만 — 궤적이 확정돼 있으니 다음 틱 위치로 하강 여부를 본다.
+                if (!clone.Playback.TryGetFuturePosition(_tick + 1, out Vector2 nextOrigin)) continue;
+                if (nextOrigin.y >= clone.transform.position.y) continue;
+
+                // 좌/우 중 짧은 쪽 = 라이브가 이미 치우쳐 있는 쪽 = 최소 이동으로 탈출
+                float escapeLeft = liveBounds.max.x - cloneBounds.min.x;
+                float escapeRight = cloneBounds.max.x - liveBounds.min.x;
+
+                _crushSlot = slot;
+                _crushDirection = escapeLeft <= escapeRight ? -1f : 1f;
+
+                // 깔리기 시작한 높이를 붙잡아 둔다. 여기서부터 아래로는 내려가지 않는다.
+                _crushLockY = live.Position.y;
+
+                Push(live, liveBounds, cloneBounds, _crushDirection);
+                return;
+            }
+        }
+
+        /// <summary>
+        /// 겹친 상태에서 한 스텝만큼 옆으로 밀어낸다. 그 동안 바닥으로는 파고들지 않게 Y를 붙잡는다.
+        /// </summary>
+        /// <remarks>
+        /// Y를 붙잡는 이유: 클론(Kinematic)이 위에서 누르면 물리 솔버가 라이브(Dynamic)를 바닥 쪽으로
+        /// 밀어넣어 지면에 파고든다. 깔린 동안엔 "옆으로만" 빠져나가야 하므로,
+        /// 깔리기 시작한 높이(_crushLockY) 아래로는 내려가지 못하게 하고 하강 속도도 지운다.
+        /// 위로 올라가는 것은 막지 않는다(클론이 들어올리는 정상 동작).
+        /// </remarks>
+        private void Push(CharacterActor live, Bounds liveBounds, Bounds cloneBounds, float direction)
+        {
+            float remaining = direction < 0f
+                ? liveBounds.max.x - cloneBounds.min.x
+                : cloneBounds.max.x - liveBounds.min.x;
+
+            remaining += _crushSkin;
+
+            Vector2 position = live.Position;
+
+            if (remaining > 0f)
+                position.x += direction * Mathf.Min(_crushEjectSpeed * Time.fixedDeltaTime, remaining);
+
+            // 바닥으로 가라앉는 것만 막는다(위로는 자유).
+            if (position.y < _crushLockY)
+                position.y = _crushLockY;
+
+            live.SetPosition(position);
+            live.StopFalling();
+        }
+
+        private void Update()
+        {
+            if (_state == RoundState.Cleared) return;
+
+            // New Input System 전용 프로젝트(activeInputHandler=1)라 구 Input.GetKeyDown은 예외를 던진다.
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null) return;
+
+            if (_state == RoundState.Selecting)
+            {
+                if (keyboard.digit1Key.wasPressedThisFrame) SelectCharacter(0);
+                else if (keyboard.digit2Key.wasPressedThisFrame) SelectCharacter(1);
+                else if (keyboard.digit3Key.wasPressedThisFrame) SelectCharacter(2);
+            }
+            else if (_state == RoundState.Recording)
+            {
+                if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
+                    ConfirmClone();
+                else if (keyboard.rKey.wasPressedThisFrame)
+                    RestartTake();
+            }
+
+            if (keyboard.backspaceKey.wasPressedThisFrame)
+                Rewind();
+        }
+
+        /// <summary>캐릭터를 골라 새 테이크를 시작한다. UI 버튼과 1/2/3 키가 공유하는 진입점.</summary>
+        public void SelectCharacter(int index)
+        {
+            if (_state != RoundState.Selecting) return;
+            if (index < 0 || index >= _characters.Length) return;
+            if (IsSlotConfirmed(index)) return;
+
+            // ── 2-패스 강제 ──
+            // 1패스에서 전원을 확실히 내린 뒤에야 2패스에서 새 라이브를 올린다.
+            // PlayerController가 액션 에셋을 Instantiate해 인스턴스별 사본을 갖게 됐지만,
+            // Enable/Disable 순서에 의존하지 않는 구조를 방어적으로 유지한다.
+            for (int i = 0; i < _characters.Length; i++)
+                _characters[i].SetMode(CharacterMode.Idle);
+
+            for (int i = 0; i < _confirmedSlots.Count; i++)
+            {
+                CharacterActor clone = _characters[_confirmedSlots[i]];
+                clone.SetMode(CharacterMode.Clone);
+                clone.Playback.ResetToStart();
+            }
+
+            // 2패스: 선택된 캐릭터만 라이브로 올린다.
+            CharacterActor live = _characters[index];
+            live.SetMode(CharacterMode.Live);
+            live.ResetToSpawn();
+            live.Recorder.BeginRecording(index);
+
+            _liveIndex = index;
+            _tick = 0;
+            _crushSlot = -1; // 라운드가 바뀌면 이전 깔림 상태는 무효다.
+            _state = RoundState.Recording;
+        }
+
+        /// <summary>현재 테이크를 확정해 클론으로 승격시킨다. Enter 또는 시간 상한 도달 시.</summary>
+        public void ConfirmClone()
+        {
+            if (_state != RoundState.Recording || _liveIndex < 0) return;
+
+            CharacterActor actor = _characters[_liveIndex];
+            CloneRecording recording = actor.Recorder.Recording;
+            actor.Playback.SetRecording(recording);
+
+            _confirmedSlots.Add(_liveIndex);
+
+            // 하이어라키 가독성: 확정된 클론은 === CLONES === 아래로 모은다.
+            if (_clonesParent != null)
+                actor.transform.SetParent(_clonesParent, worldPositionStays: true);
+
+            _liveIndex = -1;
+            EnterSelecting();
+        }
+
+        /// <summary>현재 테이크만 폐기하고 같은 캐릭터로 다시 녹화한다. 확정 스택은 건드리지 않는다.</summary>
+        public void RestartTake()
+        {
+            if (_state != RoundState.Recording || _liveIndex < 0) return;
+
+            int index = _liveIndex;
+
+            // SelectCharacter의 Selecting 가드를 통과시키기 위해 먼저 상태를 되돌린다.
+            _liveIndex = -1;
+            _state = RoundState.Selecting;
+
+            SelectCharacter(index);
+        }
+
+        /// <summary>확정 스택 최상단 1개만 되돌린다(스택형 되돌리기 — 최근 → 과거 순서만 허용).</summary>
+        public void Rewind()
+        {
+            if (_state == RoundState.Cleared) return;
+
+            // 녹화 중이었다면 현재 테이크는 버린다.
+            if (_liveIndex >= 0)
+            {
+                _characters[_liveIndex].SetMode(CharacterMode.Idle);
+                _liveIndex = -1;
+            }
+
+            if (_confirmedSlots.Count > 0)
+            {
+                int lastIndex = _confirmedSlots.Count - 1;
+                int slot = _confirmedSlots[lastIndex];
+                _confirmedSlots.RemoveAt(lastIndex);
+
+                CharacterActor actor = _characters[slot];
+                actor.Playback.SetRecording(null);
+                actor.SetMode(CharacterMode.Idle);
+
+                if (_originalParents.TryGetValue(slot, out Transform originalParent))
+                    actor.transform.SetParent(originalParent, worldPositionStays: true);
+            }
+
+            EnterSelecting();
+        }
+
+        /// <summary>라이브 캐릭터가 출구에 도달했을 때 LevelExit이 호출한다.</summary>
+        public void OnLevelCleared()
+        {
+            if (_state == RoundState.Cleared) return;
+
+            _state = RoundState.Cleared;
+            Debug.Log($"[RoundManager] LEVEL CLEARED — 사용한 클론 {_confirmedSlots.Count}기");
+        }
+
+        /// <summary>보드를 초기 상태로 되돌리고 선택 대기로 진입한다. 확정 클론은 궤적의 첫 프레임으로 복귀.</summary>
+        private void EnterSelecting()
+        {
+            for (int i = 0; i < _characters.Length; i++)
+            {
+                if (IsSlotConfirmed(i)) continue;
+
+                _characters[i].SetMode(CharacterMode.Idle);
+                _characters[i].ResetToSpawn();
+            }
+
+            for (int i = 0; i < _confirmedSlots.Count; i++)
+            {
+                CharacterActor clone = _characters[_confirmedSlots[i]];
+                clone.SetMode(CharacterMode.Clone);
+                clone.Playback.ResetToStart();
+            }
+
+            _tick = 0;
+            _state = RoundState.Selecting;
+        }
+    }
+}

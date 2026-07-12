@@ -41,6 +41,11 @@ namespace AfterYou.Player
         {
             _rigidbody = GetComponent<Rigidbody2D>();
 
+            // 인스턴스별 액션 사본을 갖는다(Unity PlayerInput이 멀티플레이에서 쓰는 공식 패턴).
+            // 에셋을 공유하면 캐릭터 3명이 같은 InputAction 객체를 쓰게 되고, OnEnable/OnDisable에
+            // 레퍼런스 카운팅이 없어 호출 순서에 따라 액션이 최종 Disable → 2라운드부터 조작 불능이 된다.
+            _inputActions = Instantiate(_inputActions);
+
             InputActionMap map = _inputActions.FindActionMap(_actionMapName, throwIfNotFound: true);
             _moveAction = map.FindAction("Move", throwIfNotFound: true);
             _jumpAction = map.FindAction("Jump", throwIfNotFound: true);

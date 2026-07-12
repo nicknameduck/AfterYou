@@ -13,6 +13,9 @@ GameObject:
   - component: {fileID: 627295245311294317}
   - component: {fileID: 8463378521082104891}
   - component: {fileID: 2346486531888442173}
+  - component: {fileID: 8923997729670501645}
+  - component: {fileID: 6243672568183883772}
+  - component: {fileID: 7554313409739423599}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -86,7 +89,7 @@ SpriteRenderer:
   m_SortingOrder: 1
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: 96df851bdc6dceb44af67797957285fd, type: 3}
-  m_Color: {r: 0.8, g: 0.8, b: 0.82, a: 1}
+  m_Color: {r: 0.25, g: 0.5, b: 0.95, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -133,7 +136,7 @@ BoxCollider2D:
   m_Enabled: 1
   serializedVersion: 3
   m_Density: 1
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 6200000, guid: 79b57612babb0fe4a9bf95bcdf10d144, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -192,6 +195,42 @@ MonoBehaviour:
     m_Bits: 256
   _coyoteTime: 0.1
   _jumpBufferTime: 0.1
+--- !u!114 &8923997729670501645
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1433645045095823877}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b9d56bf30ab3e44ca081e725990525e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AfterYou::AfterYou.Clone.CharacterRecorder
+--- !u!114 &6243672568183883772
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1433645045095823877}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bdf7447831998d740bbbb1b7850b0542, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AfterYou::AfterYou.Clone.ClonePlayback
+--- !u!114 &7554313409739423599
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1433645045095823877}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56819605692e192499fd35b283aa322a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AfterYou::AfterYou.Clone.CharacterActor
 --- !u!1 &7008923916374953965
 GameObject:
   m_ObjectHideFlags: 0

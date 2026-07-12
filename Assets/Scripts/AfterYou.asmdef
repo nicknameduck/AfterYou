@@ -2,7 +2,8 @@
     "name": "AfterYou",
     "rootNamespace": "AfterYou",
     "references": [
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "UnityEngine.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
