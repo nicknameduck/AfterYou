@@ -1,3 +1,4 @@
+using AfterYou.Core;
 using AfterYou.Player;
 using UnityEngine;
 
@@ -25,6 +26,9 @@ namespace AfterYou.Clone
         /// <summary>클론(과거의 나)의 스프라이트 알파. 라이브와 한눈에 구분되어야 퍼즐이 읽힌다.</summary>
         private const float CloneAlpha = 0.5f;
 
+        [Tooltip("이 캐릭터의 정체성(무거운형/가벼운형). 이동/점프/접지 마스크/무게가 전부 여기서 온다.")]
+        [SerializeField] private IdentityData _identity;
+
         private Rigidbody2D _rigidbody;
         private Collider2D _collider;
         private PlayerController _playerController;
@@ -34,13 +38,16 @@ namespace AfterYou.Clone
 
         private Vector2 _spawnPosition;
         private int _defaultLayer;
-        private int _groundLayer;
+        private int _cloneLayer;
 
         public CharacterRecorder Recorder => _recorder;
         public ClonePlayback Playback => _playback;
         public Collider2D Collider => _collider;
         public CharacterMode Mode { get; private set; } = CharacterMode.Idle;
         public Vector2 SpawnPosition => _spawnPosition;
+
+        /// <summary>이 캐릭터의 정체성. PressurePlate가 Weight를 읽는다. 미할당이면 null.</summary>
+        public IdentityData Identity => _identity;
 
         private void Awake()
         {
@@ -55,7 +62,29 @@ namespace AfterYou.Clone
             _spawnPosition = _rigidbody.position;
 
             _defaultLayer = LayerMask.NameToLayer("Default");
-            _groundLayer = LayerMask.NameToLayer("Ground");
+            _cloneLayer = LayerMask.NameToLayer("Clone");
+
+            // NameToLayer는 없는 레이어에 -1을 준다. gameObject.layer = -1은 예외를 던지므로 여기서 잡는다.
+            if (_cloneLayer < 0)
+                Debug.LogError($"[CharacterActor] {name}: 'Clone' 레이어가 없다. Project Settings > Tags and Layers 슬롯 9에 추가할 것.", this);
+
+            // ⚠ 정체성 적용은 반드시 Awake에서 한다 — Start에 두면 영영 실행되지 않는다.
+            //   RoundManager.Start → EnterSelecting → SetMode(Idle) → gameObject.SetActive(false) 이고,
+            //   RoundManager.Start와 이 컴포넌트의 Start는 실행 순서가 보장되지 않는다.
+            //   RoundManager가 먼저 돌면 이 GameObject가 비활성화되어 Start 자체가 호출되지 않는다.
+            //
+            // ⚠ 여기서 _playerController.enabled나 SetMode()를 부르면 안 된다.
+            //   PlayerController.OnEnable이 _moveAction.Enable()을 호출하는데, PlayerController.Awake가
+            //   아직 돌지 않았다면 _moveAction이 null이라 NRE가 난다(Awake 간 실행 순서 미보장).
+            //   ApplyIdentity는 필드 대입만 하므로 순서에 안전하다.
+            if (_identity == null)
+            {
+                Debug.LogError($"[CharacterActor] {name}: IdentityData 미할당. 이동/점프/접지 마스크/무게가 프리팹 기본값으로 남는다.", this);
+                return;
+            }
+
+            _playerController.ApplyIdentity(_identity);
+            _spriteRenderer.color = _identity.TintColor;
         }
 
         /// <summary>
@@ -82,11 +111,14 @@ namespace AfterYou.Clone
                 ? RigidbodyType2D.Dynamic
                 : RigidbodyType2D.Kinematic;
 
-            // 3) layer — 클론만 Ground. PlayerController의 접지 체크가 _groundLayer(Ground 단독)만 보므로,
-            //    클론이 Ground 레이어여야 그 위에서 _isGrounded가 서고 점프가 된다("클론 밟고 올라서기").
-            //    ⚠ 라이브를 Ground로 두면 안 된다: QueriesStartInColliders=1이라 GroundCheck 박스가
+            // 3) layer — 클론만 전용 Clone(9) 레이어. Ground(8)가 아니다.
+            //    정체성별로 "남의 등을 밟을 수 있는가"를 가르려면 클론이 지형과 다른 레이어여야 한다:
+            //      가벼운형 접지 마스크 = Ground|Clone → 클론을 밟고 점프할 수 있다("클론 밟고 올라서기").
+            //      무거운형 접지 마스크 = Ground       → 클론 위에 물리적으로 서 있을 수는 있어도 점프는 안 된다.
+            //    클론을 Ground에 두면 이 구분이 불가능해진다(둘 다 밟게 된다).
+            //    ⚠ 라이브/대기를 Clone 레이어로 두면 안 된다: QueriesStartInColliders=1이라 GroundCheck 박스가
             //    자기 자신의 콜라이더를 잡아 공중에서도 무한 점프가 된다. 반드시 Default로 되돌린다.
-            gameObject.layer = mode == CharacterMode.Clone ? _groundLayer : _defaultLayer;
+            gameObject.layer = mode == CharacterMode.Clone ? _cloneLayer : _defaultLayer;
 
             // 4) 컴포넌트 on/off — 라이브만 조작, 클론만 재생.
             _playerController.enabled = mode == CharacterMode.Live;

@@ -1,3 +1,4 @@
+using AfterYou.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -97,6 +98,31 @@ namespace AfterYou.Player
         {
             _rigidbody.linearVelocity = new Vector2(_rigidbody.linearVelocity.x, 0f);
             _rigidbody.AddForce(Vector2.up * _jumpForce, ForceMode2D.Impulse);
+        }
+
+        /// <summary>
+        /// 정체성 에셋의 능력치를 이 컨트롤러에 주입한다. CharacterActor.Awake가 호출한다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 위 인스펙터/프리팹의 _moveSpeed / _jumpForce / _groundLayer 값은 런타임에 IdentityData가 덮어쓴다.
+        ///   프리팹 값은 정체성이 붙지 않은 상태의 기본값일 뿐이다.
+        ///
+        /// ⚠ 이 메서드는 "필드 대입만" 한다 — 캐시된 참조(_rigidbody / _moveAction / _jumpAction / _inputActions)를
+        ///   읽지도 쓰지도 않는다. CharacterActor.Awake와 이 클래스의 Awake는 실행 순서가 보장되지 않으므로,
+        ///   여기서 캐시된 참조를 건드리면 아직 Awake가 돌지 않은 경우 NullReferenceException이 난다.
+        ///   대입한 3개 값은 Update/FixedUpdate/Jump에서 매 프레임 다시 읽히고, 모든 Awake는 첫 Update보다
+        ///   먼저 끝나므로 늦은 주입 문제도 없다.
+        ///
+        /// ⚠ 무게(Weight)는 여기서 쓰지 않는다. Rigidbody2D.mass에 대입하면 AddForce(Impulse)의
+        ///   Δv = jumpForce / mass 가 되어 도달고가 붕괴한다. "높이 못 간다"는 오직 _jumpForce로만 표현한다.
+        /// </remarks>
+        public void ApplyIdentity(IdentityData identity)
+        {
+            if (identity == null) return;
+
+            _moveSpeed = identity.MoveSpeed;
+            _jumpForce = identity.JumpForce;
+            _groundLayer = identity.GroundMask;
         }
 
 #if UNITY_EDITOR
