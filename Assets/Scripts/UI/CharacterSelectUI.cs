@@ -36,14 +36,28 @@ namespace AfterYou.UI
             if (_roundManager == null) return;
 
             bool canSelect = _roundManager.State == RoundState.Selecting;
+            int slotCount = _roundManager.SlotCount;
 
             for (int i = 0; i < _slotButtons.Length; i++)
-                _slotButtons[i].interactable = canSelect && !_roundManager.IsSlotConfirmed(i);
+            {
+                // 레벨마다 캐릭터 수가 2~4로 가변이다. 슬롯 수를 넘는 버튼은 숨긴다.
+                bool isInRange = i < slotCount;
+                _slotButtons[i].gameObject.SetActive(isInRange);
+                if (isInRange)
+                    _slotButtons[i].interactable = canSelect && !_roundManager.IsSlotConfirmed(i);
+            }
 
             if (_statusText != null)
             {
-                _statusText.text =
-                    $"{_roundManager.State}  |  Clones {_roundManager.ConfirmedCount}/{_roundManager.SlotCount}\n{HelpLine}";
+                if (_roundManager.State == RoundState.Cleared)
+                {
+                    _statusText.text = $"클리어! N키로 다음 레벨\n{HelpLine}";
+                }
+                else
+                {
+                    _statusText.text =
+                        $"{_roundManager.State}  |  Clones {_roundManager.ConfirmedCount}/{slotCount}\n{HelpLine}";
+                }
             }
         }
     }

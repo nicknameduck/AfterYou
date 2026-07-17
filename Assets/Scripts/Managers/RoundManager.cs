@@ -29,12 +29,10 @@ namespace AfterYou.Managers
     /// </remarks>
     public class RoundManager : MonoBehaviour
     {
-        [Header("Characters")]
-        [SerializeField] private CharacterActor[] _characters;
-
-        [Header("Spawn")]
-        [Tooltip("전 캐릭터 공유 스폰. 레벨마다 이 오브젝트만 옮기면 된다")]
-        [SerializeField] private Transform _spawnPoint;
+        // _characters / _spawnPoint는 런타임 주입이다 (LevelManager.Initialize).
+        // 레벨 = 프리팹 구조라 씬의 RoundManager가 레벨별 캐릭터/스폰을 직렬화 참조할 수 없다.
+        private CharacterActor[] _characters;
+        private Transform _spawnPoint;
 
         [Header("Recording")]
         [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
@@ -67,6 +65,9 @@ namespace AfterYou.Managers
         private int _liveIndex = -1;
         private RoundState _state = RoundState.Selecting;
 
+        /// <summary>LevelManager.Initialize가 끝났는가. false면 입력/틱/재생을 전부 무시한다(레벨 전환 중 안전장치).</summary>
+        private bool _isInitialized;
+
         /// <summary>현재 라이브를 덮치고 있는 클론 슬롯. 완전히 빠져나올 때까지 래치된다(-1 = 없음).</summary>
         private int _crushSlot = -1;
 
@@ -93,8 +94,28 @@ namespace AfterYou.Managers
 
         public bool IsSlotLive(int index) => _state == RoundState.Recording && index == _liveIndex;
 
-        private void Awake()
+        /// <summary>
+        /// LevelManager가 레벨 로드 시 캐릭터/스폰을 주입하고 라운드를 구동한다.
+        /// RoundManager는 스스로 시작하지 않는다 — 반드시 이 메서드로만 시작된다.
+        /// </summary>
+        /// <remarks>
+        /// 순서 엄수: 이전 레벨 잔재(_confirmedSlots 등)를 먼저 비운 뒤에야 originalParents를 기록하고
+        /// 스폰을 통일한다. 잔재를 남기면 다음 레벨의 Rewind가 파괴된 Transform으로 SetParent를 시도한다.
+        /// </remarks>
+        public void Initialize(CharacterActor[] characters, Transform spawnPoint)
         {
+            _characters = characters;
+            _spawnPoint = spawnPoint;
+
+            _confirmedSlots.Clear();
+            _originalParents.Clear();
+            _ignoredSpawnPairs.Clear();
+            RestoreAllSpawnOverlaps();
+
+            _tick = 0;
+            _liveIndex = -1;
+            _crushSlot = -1;
+
             for (int i = 0; i < _characters.Length; i++)
                 _originalParents[i] = _characters[i].transform.parent;
 
@@ -104,11 +125,30 @@ namespace AfterYou.Managers
                 for (int i = 0; i < _characters.Length; i++)
                     _characters[i].OverrideSpawnPosition(_spawnPoint.position);
             }
+
+            _isInitialized = true;
+            EnterSelecting();
         }
 
-        private void Start()
+        /// <summary>
+        /// 레벨 언로드 직전 LevelManager가 호출한다. 다음 레벨 로드 전 모든 상태를 안전하게 비운다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ _liveIndex = -1을 _characters = null보다 반드시 먼저 한다.
+        /// LevelExit이 전환 순간 LiveCharacter를 읽으면 _liveIndex>=0 && _characters.Length에서 NRE가 난다.
+        /// </remarks>
+        public void Teardown()
         {
-            EnterSelecting();
+            _isInitialized = false;
+            RestoreAllSpawnOverlaps();
+            _confirmedSlots.Clear();
+            _originalParents.Clear();
+            _ignoredSpawnPairs.Clear();
+            _tick = 0;
+            _liveIndex = -1;
+            _crushSlot = -1;
+            _state = RoundState.Selecting;
+            _characters = null;
         }
 
         private void OnEnable()
@@ -139,13 +179,14 @@ namespace AfterYou.Managers
             {
                 yield return waitForPhysics;
 
-                if (_state == RoundState.Recording)
+                if (_isInitialized && _state == RoundState.Recording)
                     ResolveCrush();
             }
         }
 
         private void FixedUpdate()
         {
+            if (!_isInitialized) return;
             if (_state != RoundState.Recording) return;
 
             // 스폰 겹침 복구: 살짝(0.05 초과) 떨어진 쌍부터 충돌을 되살린다.
@@ -311,6 +352,7 @@ namespace AfterYou.Managers
 
         private void Update()
         {
+            if (!_isInitialized) return;
             if (_state == RoundState.Cleared) return;
 
             // New Input System 전용 프로젝트(activeInputHandler=1)라 구 Input.GetKeyDown은 예외를 던진다.
@@ -338,6 +380,7 @@ namespace AfterYou.Managers
         /// <summary>캐릭터를 골라 새 테이크를 시작한다. UI 버튼과 1/2/3 키가 공유하는 진입점.</summary>
         public void SelectCharacter(int index)
         {
+            if (!_isInitialized) return;
             if (_state != RoundState.Selecting) return;
             if (index < 0 || index >= _characters.Length) return;
             if (IsSlotConfirmed(index)) return;
@@ -385,6 +428,7 @@ namespace AfterYou.Managers
         /// <summary>현재 테이크를 확정해 클론으로 승격시킨다. Enter 또는 시간 상한 도달 시.</summary>
         public void ConfirmClone()
         {
+            if (!_isInitialized) return;
             if (_state != RoundState.Recording || _liveIndex < 0) return;
 
             RestoreAllSpawnOverlaps();
@@ -406,6 +450,7 @@ namespace AfterYou.Managers
         /// <summary>현재 테이크만 폐기하고 같은 캐릭터로 다시 녹화한다. 확정 스택은 건드리지 않는다.</summary>
         public void RestartTake()
         {
+            if (!_isInitialized) return;
             if (_state != RoundState.Recording || _liveIndex < 0) return;
 
             // RestartTake는 EnterSelecting을 거치지 않고 곧장 SelectCharacter로 재진입하므로,
@@ -424,6 +469,7 @@ namespace AfterYou.Managers
         /// <summary>확정 스택 최상단 1개만 되돌린다(스택형 되돌리기 — 최근 → 과거 순서만 허용).</summary>
         public void Rewind()
         {
+            if (!_isInitialized) return;
             if (_state == RoundState.Cleared) return;
 
             RestoreAllSpawnOverlaps();

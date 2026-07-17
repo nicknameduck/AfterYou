@@ -17,6 +17,15 @@ namespace AfterYou.Level
     {
         [SerializeField] private RoundManager _roundManager;
 
+        /// <summary>
+        /// 레벨 프리팹은 씬의 RoundManager를 직렬화 참조할 수 없다(프리팹→씬 참조 불가).
+        /// LevelManager가 로드 시 주입한다.
+        /// </summary>
+        public void BindRoundManager(RoundManager roundManager)
+        {
+            _roundManager = roundManager;
+        }
+
         private void OnTriggerEnter2D(Collider2D other)
         {
             if (_roundManager == null) return;

@@ -49,6 +49,15 @@ namespace AfterYou.Clone
         /// <summary>이 캐릭터의 정체성. PressurePlate가 Weight를 읽는다. 미할당이면 null.</summary>
         public IdentityData Identity => _identity;
 
+        /// <summary>
+        /// LevelManager가 Instantiate 직후(비활성 상태, Awake 실행 전) 호출한다.
+        /// Awake가 이 값을 읽어 ApplyIdentity를 수행하므로 반드시 활성화 전에 주입할 것.
+        /// </summary>
+        public void InjectIdentity(IdentityData identity)
+        {
+            _identity = identity;
+        }
+
         private void Awake()
         {
             _rigidbody = GetComponent<Rigidbody2D>();

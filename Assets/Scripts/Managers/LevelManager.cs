@@ -1,0 +1,103 @@
+using System.Collections.Generic;
+using AfterYou.Clone;
+using AfterYou.Core;
+using AfterYou.Level;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+namespace AfterYou.Managers
+{
+    /// <summary>
+    /// 레벨 = 프리팹 구조의 구동자. 씬 전환 없이 레벨 프리팹을 교체하고,
+    /// 레벨 정의(LevelDefinition)의 정체성 수만큼 Player를 생성해 RoundManager에 주입한다.
+    /// </summary>
+    public class LevelManager : MonoBehaviour
+    {
+        [Tooltip("순서대로 로드될 레벨 프리팹들. 마지막 다음은 처음으로 순환한다.")]
+        [SerializeField] private LevelDefinition[] _levels;
+
+        [Tooltip("레벨마다 인원수만큼 Instantiate할 캐릭터 프리팹(Player.prefab).")]
+        [SerializeField] private GameObject _playerPrefab;
+
+        [Tooltip("생성된 캐릭터들의 부모(=== PLAYER ===). 비활성 부모 트릭에 쓴다.")]
+        [SerializeField] private Transform _charactersParent;
+
+        [Tooltip("레벨 프리팹 인스턴스의 부모(=== LEVEL ===).")]
+        [SerializeField] private Transform _levelParent;
+
+        [Tooltip("라운드 진행을 구동할 씬의 RoundManager.")]
+        [SerializeField] private RoundManager _roundManager;
+
+        /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
+        private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
+
+        private LevelDefinition _currentLevel;
+        private int _currentIndex;
+
+        private void Start()
+        {
+            LoadLevel(0);
+        }
+
+        /// <summary>레벨을 교체한다. 이전 레벨/캐릭터를 정리하고 새 레벨을 로드해 라운드를 구동한다.</summary>
+        public void LoadLevel(int index)
+        {
+            // 1) 진행 중인 라운드를 안전하게 종료한다. 참조(_characters)를 비우기 전에 RoundManager부터 정리해야
+            //    전환 순간 LevelExit이 LiveCharacter를 읽어도 NRE가 나지 않는다.
+            _roundManager.Teardown();
+
+            // 2) 이전 레벨 정리 — 캐릭터(클론 포함, reparent됐어도 리스트 기반이라 커버)와 레벨 인스턴스를 파괴한다.
+            for (int i = 0; i < _spawnedActors.Count; i++)
+            {
+                if (_spawnedActors[i] != null)
+                    Destroy(_spawnedActors[i].gameObject);
+            }
+            _spawnedActors.Clear();
+
+            if (_currentLevel != null)
+                Destroy(_currentLevel.gameObject);
+
+            // 3) 새 레벨 프리팹 인스턴스화.
+            _currentIndex = index;
+            _currentLevel = Instantiate(_levels[index], _levelParent);
+
+            IdentityData[] identities = _currentLevel.Identities;
+            Vector3 spawnPos = _currentLevel.SpawnPoint != null
+                ? _currentLevel.SpawnPoint.position
+                : Vector3.zero;
+
+            // 4) 비활성 부모 트릭 — 부모를 끈 채로 캐릭터를 생성·정체성 주입한 뒤 한 번에 켠다.
+            //    이렇게 해야 CharacterActor.Awake(정체성 적용)가 "주입 완료 후"에 실행된다.
+            _charactersParent.gameObject.SetActive(false);
+
+            for (int i = 0; i < identities.Length; i++)
+            {
+                GameObject go = Instantiate(_playerPrefab, spawnPos, Quaternion.identity, _charactersParent);
+                go.name = $"Character_{i + 1}";
+                CharacterActor actor = go.GetComponent<CharacterActor>();
+                actor.InjectIdentity(identities[i]);
+                _spawnedActors.Add(actor);
+            }
+
+            _charactersParent.gameObject.SetActive(true); // 이 순간 전원의 Awake가 주입된 정체성으로 실행된다.
+
+            // 5) 레벨 출구에 씬의 RoundManager를 주입한다(프리팹은 씬 참조를 직렬화할 수 없다).
+            if (_currentLevel.LevelExit != null)
+                _currentLevel.LevelExit.BindRoundManager(_roundManager);
+
+            // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
+            //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
+            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint);
+        }
+
+        private void Update()
+        {
+            if (_roundManager.State != RoundState.Cleared) return;
+
+            // New Input System 전용 프로젝트라 구 Input.GetKeyDown은 예외를 던진다.
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.nKey.wasPressedThisFrame)
+                LoadLevel((_currentIndex + 1) % _levels.Length);
+        }
+    }
+}
