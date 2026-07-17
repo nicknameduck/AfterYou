@@ -32,6 +32,10 @@ namespace AfterYou.Managers
         [Header("Characters")]
         [SerializeField] private CharacterActor[] _characters;
 
+        [Header("Spawn")]
+        [Tooltip("전 캐릭터 공유 스폰. 레벨마다 이 오브젝트만 옮기면 된다")]
+        [SerializeField] private Transform _spawnPoint;
+
         [Header("Recording")]
         [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
         [SerializeField] private float _maxRecordSeconds = 15f;
@@ -52,6 +56,12 @@ namespace AfterYou.Managers
 
         /// <summary>되감기 시 클론을 원래 부모(=== PLAYER ===)로 되돌리기 위한 백업.</summary>
         private readonly Dictionary<int, Transform> _originalParents = new Dictionary<int, Transform>();
+
+        /// <summary>
+        /// 스폰 순간 겹친 라이브↔클론 콜라이더 쌍. 충돌을 일시 해제해 "와르르"를 막고,
+        /// 클론이 분리되면 복구한다. GC 회피를 위해 재사용하는 리스트다.
+        /// </summary>
+        private readonly List<(Collider2D live, Collider2D clone)> _ignoredSpawnPairs = new List<(Collider2D, Collider2D)>();
 
         private int _tick;
         private int _liveIndex = -1;
@@ -87,6 +97,13 @@ namespace AfterYou.Managers
         {
             for (int i = 0; i < _characters.Length; i++)
                 _originalParents[i] = _characters[i].transform.parent;
+
+            // 공유 SpawnPoint가 지정돼 있으면 전원의 스폰을 그 한 점으로 통일한다(미지정이면 각자 초기 위치 폴백).
+            if (_spawnPoint != null)
+            {
+                for (int i = 0; i < _characters.Length; i++)
+                    _characters[i].OverrideSpawnPosition(_spawnPoint.position);
+            }
         }
 
         private void Start()
@@ -130,6 +147,24 @@ namespace AfterYou.Managers
         private void FixedUpdate()
         {
             if (_state != RoundState.Recording) return;
+
+            // 스폰 겹침 복구: 살짝(0.05 초과) 떨어진 쌍부터 충돌을 되살린다.
+            // 겹친 채로 복구하면 솔버가 라이브를 홱 튕겨내므로 여유 마진을 둔다.
+            for (int i = _ignoredSpawnPairs.Count - 1; i >= 0; i--)
+            {
+                (Collider2D live, Collider2D clone) pair = _ignoredSpawnPairs[i];
+                if (pair.live == null || pair.clone == null)
+                {
+                    _ignoredSpawnPairs.RemoveAt(i);
+                    continue;
+                }
+
+                if (pair.live.Distance(pair.clone).distance > 0.05f)
+                {
+                    Physics2D.IgnoreCollision(pair.live, pair.clone, false);
+                    _ignoredSpawnPairs.RemoveAt(i);
+                }
+            }
 
             // 순서 엄수: 재생 → 기록 → 틱 증가.
             // 같은 _tick에서 클론과 라이브가 동일한 물리 스텝을 공유해야 궤적이 재현된다.
@@ -327,6 +362,20 @@ namespace AfterYou.Managers
             live.ResetToSpawn();
             live.Recorder.BeginRecording(index);
 
+            // 스폰 순간 라이브와 겹친 클론만 충돌을 일시 해제한다("와르르" 방지). 분리되면 FixedUpdate가 복구.
+            Collider2D liveCollider = live.Collider;
+            for (int i = 0; i < _confirmedSlots.Count; i++)
+            {
+                Collider2D cloneCollider = _characters[_confirmedSlots[i]].Collider;
+                if (liveCollider == null || cloneCollider == null) continue;
+
+                if (liveCollider.Distance(cloneCollider).isOverlapped)
+                {
+                    Physics2D.IgnoreCollision(liveCollider, cloneCollider, true);
+                    _ignoredSpawnPairs.Add((liveCollider, cloneCollider));
+                }
+            }
+
             _liveIndex = index;
             _tick = 0;
             _crushSlot = -1; // 라운드가 바뀌면 이전 깔림 상태는 무효다.
@@ -337,6 +386,8 @@ namespace AfterYou.Managers
         public void ConfirmClone()
         {
             if (_state != RoundState.Recording || _liveIndex < 0) return;
+
+            RestoreAllSpawnOverlaps();
 
             CharacterActor actor = _characters[_liveIndex];
             CloneRecording recording = actor.Recorder.Recording;
@@ -357,6 +408,10 @@ namespace AfterYou.Managers
         {
             if (_state != RoundState.Recording || _liveIndex < 0) return;
 
+            // RestartTake는 EnterSelecting을 거치지 않고 곧장 SelectCharacter로 재진입하므로,
+            // 여기서 직접 복구하지 않으면 이번 테이크의 겹침 쌍이 남아 다음 등록과 중복된다.
+            RestoreAllSpawnOverlaps();
+
             int index = _liveIndex;
 
             // SelectCharacter의 Selecting 가드를 통과시키기 위해 먼저 상태를 되돌린다.
@@ -370,6 +425,8 @@ namespace AfterYou.Managers
         public void Rewind()
         {
             if (_state == RoundState.Cleared) return;
+
+            RestoreAllSpawnOverlaps();
 
             // 녹화 중이었다면 현재 테이크는 버린다.
             if (_liveIndex >= 0)
@@ -404,9 +461,27 @@ namespace AfterYou.Managers
             Debug.Log($"[RoundManager] LEVEL CLEARED — 사용한 클론 {_confirmedSlots.Count}기");
         }
 
+        /// <summary>
+        /// 남은 스폰 겹침 쌍의 충돌을 전부 복구하고 리스트를 비운다.
+        /// 복구를 빠뜨리면 이후 "클론 밟기"가 영영 안 되므로 상태 전환마다 반드시 호출한다.
+        /// </summary>
+        private void RestoreAllSpawnOverlaps()
+        {
+            for (int i = 0; i < _ignoredSpawnPairs.Count; i++)
+            {
+                (Collider2D live, Collider2D clone) pair = _ignoredSpawnPairs[i];
+                if (pair.live != null && pair.clone != null)
+                    Physics2D.IgnoreCollision(pair.live, pair.clone, false);
+            }
+
+            _ignoredSpawnPairs.Clear();
+        }
+
         /// <summary>보드를 초기 상태로 되돌리고 선택 대기로 진입한다. 확정 클론은 궤적의 첫 프레임으로 복귀.</summary>
         private void EnterSelecting()
         {
+            RestoreAllSpawnOverlaps();
+
             for (int i = 0; i < _characters.Length; i++)
             {
                 if (IsSlotConfirmed(i)) continue;

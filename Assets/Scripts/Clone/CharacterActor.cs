@@ -88,6 +88,14 @@ namespace AfterYou.Clone
         }
 
         /// <summary>
+        /// RoundManager가 공유 SpawnPoint를 주입한다. 레벨마다 SpawnPoint만 옮기면 전원의 스폰이 따라온다.
+        /// </summary>
+        public void OverrideSpawnPosition(Vector2 position)
+        {
+            _spawnPosition = position;
+        }
+
+        /// <summary>
         /// 모드 전환. 순서가 곧 안전장치다 — 아래 주석의 1~5 순서를 바꾸지 말 것.
         /// </summary>
         public void SetMode(CharacterMode mode)

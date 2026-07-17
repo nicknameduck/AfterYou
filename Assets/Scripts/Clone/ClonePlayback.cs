@@ -12,9 +12,24 @@ namespace AfterYou.Clone
     [RequireComponent(typeof(Rigidbody2D))]
     public class ClonePlayback : MonoBehaviour
     {
+        /// <summary>클론 기준 알파. CharacterActor.CloneAlpha와 같은 값이어야 한다(반투명 0.5).</summary>
+        private const float CloneAlpha = 0.5f;
+
+        /// <summary>스폰 지점에서 이만큼 벗어나면 "걸어 나갔다"로 보고 페이드인을 시작한다.</summary>
+        private const float RevealDistance = 0.5f;
+
+        /// <summary>페이드인에 걸리는 시간(초).</summary>
+        private const float RevealDuration = 0.15f;
+
+        /// <summary>제자리에 선 클론도 결국 나타나게 하는 폴백 틱(≈1초).</summary>
+        private const int RevealTickFallback = 50;
+
         private Rigidbody2D _rigidbody;
         private SpriteRenderer _spriteRenderer;
         private CloneRecording _recording;
+
+        /// <summary>페이드인 진행도(0=투명, 1=완전 공개). 한 번 오르면 되돌리지 않는다.</summary>
+        private float _revealProgress;
 
         public int FrameCount => _recording != null ? _recording.FrameCount : 0;
 
@@ -50,13 +65,20 @@ namespace AfterYou.Clone
             return true;
         }
 
-        /// <summary>라운드 리셋: 궤적의 첫 프레임으로 순간 배치한다.</summary>
+        /// <summary>라운드 리셋: 궤적의 첫 프레임으로 순간 배치하고 투명하게 되돌린다.</summary>
         public void ResetToStart()
         {
             if (FrameCount == 0) return;
 
+            _revealProgress = 0f;
+
             RecordedFrame frame = _recording.GetFrame(0);
             Teleport(frame);
+
+            // 투명하게 시작 — 스폰에서 겹친 클론들이 한꺼번에 보이지 않게 숨긴다(이동/폴백 때 페이드인).
+            Color color = _spriteRenderer.color;
+            color.a = 0f;
+            _spriteRenderer.color = color;
         }
 
         /// <summary>
@@ -76,6 +98,30 @@ namespace AfterYou.Clone
 
             _rigidbody.MovePosition(frame.Position);
             _spriteRenderer.flipX = !frame.IsFacingRight;
+
+            UpdateReveal(tick, frame.Position);
+        }
+
+        /// <summary>
+        /// 스태거 페이드인. 타이밍은 밀지 않는다 — 보이는 것만 늦춘다.
+        /// </summary>
+        /// <remarks>
+        /// 스폰 지점을 RevealDistance 이상 벗어나거나 폴백 틱을 넘기면 공개를 시작하고,
+        /// 한 번 시작하면(_revealProgress > 0) 되돌리지 않고 RevealDuration에 걸쳐 알파를 0→CloneAlpha로 올린다.
+        /// </remarks>
+        private void UpdateReveal(int tick, Vector2 currentPosition)
+        {
+            if (_revealProgress < 1f)
+            {
+                bool hasLeftSpawn = Vector2.Distance(currentPosition, _recording.GetFrame(0).Position) > RevealDistance;
+                if (_revealProgress > 0f || hasLeftSpawn || tick > RevealTickFallback)
+                    _revealProgress = Mathf.Min(1f, _revealProgress + Time.fixedDeltaTime / RevealDuration);
+            }
+
+            // CharacterActor.SetMode가 세팅한 RGB(정체성 색)는 보존하고 알파만 덮어쓴다.
+            Color color = _spriteRenderer.color;
+            color.a = CloneAlpha * _revealProgress;
+            _spriteRenderer.color = color;
         }
 
         /// <summary>보간 스미어를 피하려고 Rigidbody2D와 Transform을 함께 맞춘다(AutoSyncTransforms가 꺼져 있음).</summary>
