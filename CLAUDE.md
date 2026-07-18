@@ -32,6 +32,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **셸 검색 차단 훅** (`.claude/scripts/block-search-in-shell.ps1`)
 - 관련 프로젝트: LostPages(`D:\LostPages\`), CatLibrary(`D:\CatLibrary\`)
 
+## 오케스트레이션 운용 기준 (fable + 하네스 병용)
+
+fable 오케스트레이션(넓이: 비정형 작업 라우팅)과 하네스(깊이: 구현 파이프라인의 구조적 검증)는 역할을 나눠 병용한다. fable.md의 하네스 예외 조항이 이중 계층을 방지한다.
+
+- **fable ON 상시** — 탐색·조사·설계 논의·잡무 등 비정형 작업은 오케스트레이터가 서브에이전트에 라우팅한다.
+- **중규모 이상 구현 작업은 `/harness`** — 하네스 진행 중에는 오케스트레이션 지침을 적용하지 않는다 (fable.md 예외 조항). 오케스트레이터가 하네스 위에 위임 계층을 얹지 않는다.
+- **하네스 모델 배분** — Planner(메인 루프=Fable 직접 수행)·Critic(model: fable)은 판단 품질 우선, Generator(model: opus)는 코드 대량 생성 토큰 절약. 상세는 하네스 스킬(SKILL.md)이 정의한다.
+- **1~2파일 사소한 수정·조회·논의는 메인 루프 직접** — 작업이 작아 토큰 절대량이 미미하고, 위임 왕복이 오히려 낭비다.
+
 ## 베이스라인 원칙 (Karpathy 4원칙)
 
 LLM 코딩 흔한 실수를 줄이기 위한 일반 가이드라인. **이 4원칙은 베이스라인이며, 프로젝트 특화 규칙(작업 응답 규칙, 변경 안전 규칙, 하네스 규칙 등)과 충돌 시 프로젝트 특화 규칙이 우선한다.**
@@ -232,10 +241,10 @@ LLM 코딩 흔한 실수를 줄이기 위한 일반 가이드라인. **이 4원�
 하네스 실행은 `/harness` 스킬을 사용한다. Refine은 `/harness-refine` 스킬을 사용한다.
 
 ### 4단계 파이프라인
-1. **Planner** — 구현 계획 수립 (수정 대상, 순서, 의존 관계)
-2. **Critic** — 계획 검증 (과거 실패 학습, 파괴적 변경 탐지, 참조처 매핑)
-3. **Generator** — Planner 계획 + Critic 검증 결과를 합쳐 받아 코드 생성
-4. **Evaluator** — `harness-eval.md` 기준으로 채점
+1. **Planner** — 구현 계획 수립 (수정 대상, 순서, 의존 관계). 메인 루프(Fable)가 직접 수행
+2. **Critic** — 계획 검증 (과거 실패 학습, 파괴적 변경 탐지, 참조처 매핑). Explore 에이전트(model: fable)
+3. **Generator** — Planner 계획 + Critic 검증 결과를 합쳐 받아 코드 생성. general-purpose 에이전트(**model: opus 강제** — 미명시 시 부모 모델을 상속해 토큰 낭비)
+4. **Evaluator** — `harness-eval.md` 기준으로 채점. **독립 Explore 에이전트(model: fable)**로 실행하며 입력은 원본 스펙 + git diff + 동작 조건 체크리스트만 전달한다 (Planner/Critic/Generator 산출물 미전달 — 자기 채점 편향 차단). 반증 우선 채점: 스펙 감사 + 적대 시나리오 3개 MCP 실측 의무. 결과 기록(파일 쓰기)은 메인 루프가 수행
 
 ### 투명성
 - Generator에 전달할 **Planner 계획 + Critic 검증 결과** 합본을 사용자에게 먼저 보여준다.

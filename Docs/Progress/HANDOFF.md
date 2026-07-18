@@ -7,7 +7,7 @@
 ## 현재 위치
 
 - **Phase 3-1 완료 · 커밋됨** (`dd4b49d` — 운반형 정체성 + 물체 밀기, 하네스 99/100)
-- 워킹트리: 클린
+- 워킹트리: `CLAUDE.md`·`.claude/harness-eval.md` 수정 미커밋 (오케스트레이션 병용 체제 + Evaluator 반증 채점 개편 — 2026-07-18.md 참조)
 - ⭐ 재미 검증 통과 (2026-07-18, 사용자 플레이테스트) → Phase 3 진행 중
 - **Level_1_4 사용자 플레이테스트 대기** — 박스 밀기 감각(moveSpeed 6, mass 1) + 클론·박스 동기 재생 체감
 
@@ -34,6 +34,9 @@
 - **IgnoreCollision 복구 4개 진입점** — EnterSelecting/Rewind/ConfirmClone/RestartTake 전부에서 전체복구. 누락 시 클론 밟기가 영영 불가
 
 ## 확정 사양 / 폐기한 접근
+
+- **fable+하네스 병용 체제** (2026-07-18) — fable ON 상시(비정형 작업 라우팅), 구현은 `/harness`(진행 중 오케스트레이션 지침 미적용). 모델 배분: Planner·Critic·Evaluator=fable, Generator=opus 강제. "fable OFF 고정" 접근은 **폐기**
+- **Evaluator 반증 채점 체계** (2026-07-18) — 독립 에이전트 채점(자기 채점 편향 절단) + 스펙 감사 + 적대 시나리오 3개 실측 의무 + 만점 방지 조항. 이전 회차(99/100)와 점수 직접 비교 불가 — 하락이 정상
 
 - **박스는 밀기 전용 (현재)** — 박스 레이어 Default(0)는 접지 마스크(256/768)에 없어 박스 위 점프 불가. 딛기 허용은 레이어 정책 결정 후
 - **박스 소유권 모델** — 미소유 박스는 운반형 라이브 라운드에만 Record(Dynamic), 그 외 Frozen(Kinematic). 확정 시 변위 있으면 OwnerSlot 귀속 → 이후 Replay(tick+1 재생). "운반형만 민다"는 물리 트릭이 아닌 `CanManipulateObjects` 데이터 플래그
