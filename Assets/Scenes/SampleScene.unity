@@ -1389,6 +1389,7 @@ MonoBehaviour:
   - {fileID: 4868195601262945317, guid: 39e57cb72cb622742a7b33a0ad674ea9, type: 3}
   - {fileID: 342088951578708354, guid: d30e0ab6ab1705342a3339efe2f706ce, type: 3}
   - {fileID: 4400000000000000003, guid: a7790e2de9d943c1afa92d7f693b3fc5, type: 3}
+  - {fileID: 5100000000000000003, guid: d5f1a3b8c60e42a79b3d18f4e0a6c9b2, type: 3}
   _playerPrefab: {fileID: 1433645045095823877, guid: 5ef465df388f1734fbc3439becae0067, type: 3}
   _charactersParent: {fileID: 387093709}
   _levelParent: {fileID: 1171196769}

@@ -29,14 +29,30 @@ namespace AfterYou.Player
         [SerializeField] private float _coyoteTime = 0.1f;
         [SerializeField] private float _jumpBufferTime = 0.1f;
 
+        [Header("벽타기 (Climber 전용)")]
+        [Tooltip("부착 가능한 벽 레이어(Climbable=10). Ground/Clone은 제외 — 렛지·클론에는 붙지 않는다.")]
+        [SerializeField] private LayerMask _climbableLayer;
+        [Tooltip("측면 Climbable 검출 박스 크기(얇고 세로로 긴 박스).")]
+        [SerializeField] private Vector2 _wallCheckSize = new Vector2(0.15f, 0.8f);
+        [Tooltip("측면 검출 박스의 중심에서의 수평 오프셋. 캐릭터 콜라이더 반폭(0.5)에 맞춘다.")]
+        [SerializeField] private float _wallCheckOffset = 0.5f;
+
         private Rigidbody2D _rigidbody;
         private InputAction _moveAction;
         private InputAction _jumpAction;
 
+        private const float WallInputThreshold = 0.3f;
+
         private float _moveInput;
+        private float _moveInputY;
         private float _coyoteCounter;
         private float _jumpBufferCounter;
         private bool _isGrounded;
+
+        private bool _canClimbWalls;
+        private bool _isWallAttached;
+        private int _wallDirection;
+        private float _savedGravityScale;
 
         private void Awake()
         {
@@ -62,14 +78,19 @@ namespace AfterYou.Player
         {
             _moveAction.Disable();
             _jumpAction.Disable();
+            Detach();
         }
 
         private void Update()
         {
             _moveInput = _moveAction.ReadValue<Vector2>().x;
+            _moveInputY = _moveAction.ReadValue<Vector2>().y;
 
             // 접지 체크: 발밑 박스에 지면 레이어가 겹치는지
             _isGrounded = Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _groundLayer);
+
+            // 벽타기: 매 틱 부착 조건을 재검증한다(자가 치유 — 접촉/입력이 사라지면 즉시 이탈).
+            UpdateWallAttach();
 
             // 코요테 타임: 지면을 막 떠나도 잠깐은 점프 허용
             _coyoteCounter = _isGrounded ? _coyoteTime : _coyoteCounter - Time.deltaTime;
@@ -80,7 +101,21 @@ namespace AfterYou.Player
             else
                 _jumpBufferCounter -= Time.deltaTime;
 
-            if (_jumpBufferCounter > 0f && _coyoteCounter > 0f)
+            if (_isWallAttached)
+            {
+                // 벽점프: 부착 중 점프는 벽 반대 방향으로 튕겨 나가며 이탈한다.
+                // 버퍼/코요테를 소모해 기둥 하단 부착 시 접지와 겹쳐 이중 임펄스가 나는 것을 막는다.
+                if (_jumpBufferCounter > 0f)
+                {
+                    int jumpDir = -_wallDirection;
+                    Detach();
+                    _rigidbody.linearVelocity = new Vector2(jumpDir * _moveSpeed, 0f);
+                    _rigidbody.AddForce(Vector2.up * _jumpForce, ForceMode2D.Impulse);
+                    _jumpBufferCounter = 0f;
+                    _coyoteCounter = 0f;
+                }
+            }
+            else if (_jumpBufferCounter > 0f && _coyoteCounter > 0f)
             {
                 Jump();
                 _jumpBufferCounter = 0f;
@@ -90,6 +125,13 @@ namespace AfterYou.Player
 
         private void FixedUpdate()
         {
+            // 벽 부착 중에는 x를 고정하고 y 입력으로만 상하 이동한다(중력은 Attach가 0으로 만들었다).
+            if (_isWallAttached)
+            {
+                _rigidbody.linearVelocity = new Vector2(0f, _moveInputY * _moveSpeed);
+                return;
+            }
+
             // 수평 속도만 덮어쓰고 수직(중력/점프)은 물리에 맡긴다
             _rigidbody.linearVelocity = new Vector2(_moveInput * _moveSpeed, _rigidbody.linearVelocity.y);
         }
@@ -98,6 +140,69 @@ namespace AfterYou.Player
         {
             _rigidbody.linearVelocity = new Vector2(_rigidbody.linearVelocity.x, 0f);
             _rigidbody.AddForce(Vector2.up * _jumpForce, ForceMode2D.Impulse);
+        }
+
+        /// <summary>
+        /// 벽타기형 전용: 매 틱 부착 상태를 재검증한다(자가 치유).
+        /// 부착 중이면 이탈 조건(반대 입력 / 접촉 상실)을, 아니면 부착 조건(벽 방향 입력 + Climbable 접촉)을 본다.
+        /// 벽점프는 Update의 점프 블록이 담당하므로 여기서 다루지 않는다.
+        /// </summary>
+        private void UpdateWallAttach()
+        {
+            // 정체성이 클라이머가 아니면 부착이 남아 있을 수 없다(정체성 전환 안전).
+            if (!_canClimbWalls)
+            {
+                Detach();
+                return;
+            }
+
+            // WASD 대각 입력은 정규화되어 x 성분이 0.707이므로 임계 0.3이면 대각도 벽 방향으로 인정된다.
+            int inputDir = _moveInput > WallInputThreshold ? 1
+                         : (_moveInput < -WallInputThreshold ? -1 : 0);
+
+            if (_isWallAttached)
+            {
+                // 이탈 3경로 중 2개(반대 입력 / 접촉 상실). 중립 x입력은 부착을 유지한다.
+                bool oppositeInput = inputDir == -_wallDirection;
+                bool contactLost = !CheckClimbable(_wallDirection);
+                if (oppositeInput || contactLost)
+                    Detach();
+            }
+            else if (inputDir != 0 && CheckClimbable(inputDir))
+            {
+                Attach(inputDir);
+            }
+        }
+
+        /// <summary>지정한 수평 방향(±1) 측면에 Climbable 레이어 콜라이더가 있는지 검사한다.</summary>
+        private bool CheckClimbable(int direction)
+        {
+            Vector2 origin = _rigidbody.position + new Vector2(direction * _wallCheckOffset, 0f);
+            return Physics2D.OverlapBox(origin, _wallCheckSize, 0f, _climbableLayer);
+        }
+
+        /// <summary>벽에 부착한다. 중력을 저장 후 0으로 만들어 y 입력으로만 상하 이동하게 한다.</summary>
+        private void Attach(int direction)
+        {
+            if (_isWallAttached) return;
+            _isWallAttached = true;
+            _wallDirection = direction;
+            _savedGravityScale = _rigidbody.gravityScale;
+            _rigidbody.gravityScale = 0f;
+            _rigidbody.linearVelocity = Vector2.zero;
+        }
+
+        /// <summary>
+        /// 벽에서 이탈한다. 중력 복원을 단독 소유하는 유일한 경로다
+        /// (매 틱 재검증 / 벽점프 / OnDisable 전부 이걸 호출 — gravityScale 0 잔존 방지).
+        /// 미부착 상태에서 호출되면 저장값(0)으로 중력을 덮어쓰지 않도록 즉시 반환한다.
+        /// </summary>
+        private void Detach()
+        {
+            if (!_isWallAttached) return;
+            _isWallAttached = false;
+            _wallDirection = 0;
+            _rigidbody.gravityScale = _savedGravityScale;
         }
 
         /// <summary>
@@ -123,6 +228,7 @@ namespace AfterYou.Player
             _moveSpeed = identity.MoveSpeed;
             _jumpForce = identity.JumpForce;
             _groundLayer = identity.GroundMask;
+            _canClimbWalls = identity.CanClimbWalls;
         }
 
 #if UNITY_EDITOR
@@ -131,6 +237,12 @@ namespace AfterYou.Player
             if (_groundCheck == null) return;
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireCube(_groundCheck.position, _groundCheckSize);
+
+            // 벽타기 측면 검출 박스(좌/우). 부착 판정 범위를 눈으로 확인한다.
+            Gizmos.color = Color.magenta;
+            Vector2 center = transform.position;
+            Gizmos.DrawWireCube(center + new Vector2(_wallCheckOffset, 0f), _wallCheckSize);
+            Gizmos.DrawWireCube(center + new Vector2(-_wallCheckOffset, 0f), _wallCheckSize);
         }
 #endif
     }

@@ -195,6 +195,11 @@ MonoBehaviour:
     m_Bits: 256
   _coyoteTime: 0.1
   _jumpBufferTime: 0.1
+  _climbableLayer:
+    serializedVersion: 2
+    m_Bits: 1024
+  _wallCheckSize: {x: 0.15, y: 0.8}
+  _wallCheckOffset: 0.5
 --- !u!114 &8923997729670501645
 MonoBehaviour:
   m_ObjectHideFlags: 0

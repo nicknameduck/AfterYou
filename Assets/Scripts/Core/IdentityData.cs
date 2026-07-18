@@ -43,6 +43,10 @@ namespace AfterYou.Core
                  "라이브가 이 정체성이면 그 라운드에서만 박스가 Dynamic이 되어 밀 수 있고, 궤적이 기록된다.")]
         [SerializeField] private bool _canManipulateObjects;
 
+        [Tooltip("벽타기형 고유 동사 '붙는다' 게이트 — Climbable 벽 부착 가능 여부. 천장은 미지원.\n" +
+                 "라이브가 이 정체성이면 벽 방향 입력 홀드로 Climbable 벽에 붙어 상하 이동할 수 있다.")]
+        [SerializeField] private bool _canClimbWalls;
+
         public string DisplayName => _displayName;
         public Color TintColor => _tintColor;
         public float MoveSpeed => _moveSpeed;
@@ -56,5 +60,8 @@ namespace AfterYou.Core
 
         /// <summary>박스 밀기 가능 여부(운반형 게이트). 라이브가 이 정체성일 때만 그 라운드 박스가 Dynamic으로 기록된다.</summary>
         public bool CanManipulateObjects => _canManipulateObjects;
+
+        /// <summary>벽 부착 가능 여부(벽타기형 게이트). 라이브가 이 정체성일 때만 Climbable 벽에 붙을 수 있다.</summary>
+        public bool CanClimbWalls => _canClimbWalls;
     }
 }
