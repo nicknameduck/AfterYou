@@ -87,7 +87,7 @@ namespace AfterYou.Managers
 
             // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
-            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint);
+            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes);
         }
 
         private void Update()

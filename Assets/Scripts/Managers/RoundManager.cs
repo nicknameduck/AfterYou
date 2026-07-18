@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using AfterYou.Clone;
 using AfterYou.Core;
+using AfterYou.Level;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -34,6 +35,9 @@ namespace AfterYou.Managers
         private CharacterActor[] _characters;
         private Transform _spawnPoint;
 
+        // 레벨의 밀 수 있는 박스들(런타임 주입). 라운드마다 중앙 틱으로 구동해 기록/재생한다.
+        private PushableBox[] _boxes;
+
         [Header("Recording")]
         [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
         [SerializeField] private float _maxRecordSeconds = 15f;
@@ -60,6 +64,9 @@ namespace AfterYou.Managers
         /// 클론이 분리되면 복구한다. GC 회피를 위해 재사용하는 리스트다.
         /// </summary>
         private readonly List<(Collider2D live, Collider2D clone)> _ignoredSpawnPairs = new List<(Collider2D, Collider2D)>();
+
+        /// <summary>박스가 "실제로 밀렸다"고 인정하는 최소 이동 거리. 이 미만이면 기록을 버린다(소유 미승격).</summary>
+        private const float BoxDisplacementEpsilon = 0.05f;
 
         private int _tick;
         private int _liveIndex = -1;
@@ -102,15 +109,20 @@ namespace AfterYou.Managers
         /// 순서 엄수: 이전 레벨 잔재(_confirmedSlots 등)를 먼저 비운 뒤에야 originalParents를 기록하고
         /// 스폰을 통일한다. 잔재를 남기면 다음 레벨의 Rewind가 파괴된 Transform으로 SetParent를 시도한다.
         /// </remarks>
-        public void Initialize(CharacterActor[] characters, Transform spawnPoint)
+        public void Initialize(CharacterActor[] characters, Transform spawnPoint, PushableBox[] boxes)
         {
             _characters = characters;
             _spawnPoint = spawnPoint;
+            _boxes = boxes ?? System.Array.Empty<PushableBox>();
 
             _confirmedSlots.Clear();
             _originalParents.Clear();
             _ignoredSpawnPairs.Clear();
             RestoreAllSpawnOverlaps();
+
+            // 이전 레벨 잔재 방지: 박스 소유/기록을 전부 비운다.
+            for (int i = 0; i < _boxes.Length; i++)
+                _boxes[i].ClearOwnership();
 
             _tick = 0;
             _liveIndex = -1;
@@ -149,6 +161,7 @@ namespace AfterYou.Managers
             _crushSlot = -1;
             _state = RoundState.Selecting;
             _characters = null;
+            _boxes = null;
         }
 
         private void OnEnable()
@@ -206,6 +219,9 @@ namespace AfterYou.Managers
                     _ignoredSpawnPairs.RemoveAt(i);
                 }
             }
+
+            // 박스 구동: 틱 증가 전 현재 _tick 값으로 재생/기록한다 → 클론과 동일 틱을 공유.
+            DriveBoxes(_tick);
 
             // 순서 엄수: 재생 → 기록 → 틱 증가.
             // 같은 _tick에서 클론과 라이브가 동일한 물리 스텝을 공유해야 궤적이 재현된다.
@@ -422,6 +438,10 @@ namespace AfterYou.Managers
             _liveIndex = index;
             _tick = 0;
             _crushSlot = -1; // 라운드가 바뀌면 이전 깔림 상태는 무효다.
+
+            // 박스 준비: 라이브가 운반형이면 미소유 박스를 Record(Dynamic)로 열고, 소유 박스는 Replay로 건다.
+            PrepareBoxesForRound(index);
+
             _state = RoundState.Recording;
         }
 
@@ -442,6 +462,22 @@ namespace AfterYou.Managers
             // 하이어라키 가독성: 확정된 클론은 === CLONES === 아래로 모은다.
             if (_clonesParent != null)
                 actor.transform.SetParent(_clonesParent, worldPositionStays: true);
+
+            // 박스 커밋: 라이브가 운반형이면, 이번 라운드에 민 박스(Record 모드)의 궤적을 확정한다.
+            // 실제로 움직인 박스만 이 슬롯 소유로 승격하고, 안 움직인 박스는 기록을 버린다.
+            if (actor.Identity != null && actor.Identity.CanManipulateObjects)
+            {
+                for (int i = 0; i < _boxes.Length; i++)
+                {
+                    PushableBox box = _boxes[i];
+                    if (box.Mode != PushableBoxMode.Record) continue;
+
+                    if (box.HasDisplacement(BoxDisplacementEpsilon))
+                        box.CommitRecording(_liveIndex);
+                    else
+                        box.DiscardRecording();
+                }
+            }
 
             _liveIndex = -1;
             EnterSelecting();
@@ -493,6 +529,13 @@ namespace AfterYou.Managers
 
                 if (_originalParents.TryGetValue(slot, out Transform originalParent))
                     actor.transform.SetParent(originalParent, worldPositionStays: true);
+
+                // 되감긴 슬롯이 소유하던 박스는 소유를 풀어 base 상태로 되돌린다(EnterSelecting이 Frozen+Reset 처리).
+                for (int i = 0; i < _boxes.Length; i++)
+                {
+                    if (_boxes[i].OwnerSlot == slot)
+                        _boxes[i].ClearOwnership();
+                }
             }
 
             EnterSelecting();
@@ -543,8 +586,65 @@ namespace AfterYou.Managers
                 clone.Playback.ResetToStart();
             }
 
+            // 박스도 초기 상태로 되돌린다: 전부 Frozen + base 위치. 소유 박스는 다음 SelectCharacter에서 Replay로 전환.
+            for (int i = 0; i < _boxes.Length; i++)
+            {
+                _boxes[i].SetMode(PushableBoxMode.Frozen);
+                _boxes[i].ResetToBase();
+            }
+
             _tick = 0;
             _state = RoundState.Selecting;
+        }
+
+        /// <summary>
+        /// 중앙 틱에 맞춰 박스를 구동한다. Record 박스는 현재 물리 위치를 기록하고, 소유(Replay) 박스는 궤적을 재생한다.
+        /// </summary>
+        /// <remarks>클론 재생/라이브 기록과 동일한 _tick을 공유하도록 FixedUpdate의 틱 증가 "이전"에 호출된다.</remarks>
+        private void DriveBoxes(int tick)
+        {
+            for (int i = 0; i < _boxes.Length; i++)
+            {
+                PushableBox box = _boxes[i];
+
+                if (box.Mode == PushableBoxMode.Record)
+                    box.CaptureBoxTick(tick);
+                else if (box.OwnerSlot >= 0 && box.Mode == PushableBoxMode.Replay)
+                    box.ApplyBoxTick(tick);
+            }
+        }
+
+        /// <summary>
+        /// 새 라운드 시작 시 박스의 구동 모드를 정한다.
+        /// </summary>
+        /// <remarks>
+        /// 소유된 박스는 누가 라이브든 항상 Replay(확정 궤적 재생)다.
+        /// 미소유 박스는 라이브가 운반형(CanManipulateObjects)일 때만 Record(Dynamic)로 열려 밀 수 있고,
+        /// 운반형이 아니면 Frozen 그대로 둔다 — 순서를 강제하는 핵심 규칙이다.
+        /// </remarks>
+        private void PrepareBoxesForRound(int index)
+        {
+            IdentityData identity = _characters[index].Identity;
+            bool canManipulate = identity != null && identity.CanManipulateObjects;
+
+            for (int i = 0; i < _boxes.Length; i++)
+            {
+                PushableBox box = _boxes[i];
+
+                if (box.OwnerSlot >= 0)
+                {
+                    box.SetMode(PushableBoxMode.Replay);
+                }
+                else if (canManipulate)
+                {
+                    box.SetMode(PushableBoxMode.Record);
+                    box.BeginRecording(index);
+                }
+                else
+                {
+                    box.SetMode(PushableBoxMode.Frozen);
+                }
+            }
         }
     }
 }

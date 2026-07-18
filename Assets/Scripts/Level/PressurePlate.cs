@@ -108,6 +108,16 @@ namespace AfterYou.Level
                 Collider2D other = _overlapBuffer[i];
                 if (other == null) continue;
 
+                // 박스 분기: 캐릭터 필터보다 먼저 본다. CharacterActor null-continue 뒤에 두면 박스가 걸러진다.
+                // 박스도 캐릭터와 동일한 기하 조건(밑면이 판 윗면 높이)일 때만 Weight를 합산한다.
+                PushableBox box = other.GetComponentInParent<PushableBox>();
+                if (box != null)
+                {
+                    if (other.bounds.min.y >= plateTop - _standTolerance)
+                        totalWeight += box.Weight;
+                    continue;
+                }
+
                 // 2차 필터: 레이어만으로는 부족하다. 콜라이더가 자식(GroundCheck 등)에 붙어 있을 수 있으므로
                 // 부모까지 거슬러 CharacterActor를 찾는다(LevelExit과 동일 패턴).
                 CharacterActor actor = other.GetComponentInParent<CharacterActor>();

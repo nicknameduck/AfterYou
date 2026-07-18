@@ -39,6 +39,10 @@ namespace AfterYou.Core
                  "무거운형 = Ground (256) → 클론 위에 물리적으로 서 있을 수는 있으나 점프는 되지 않는다.")]
         [SerializeField] private LayerMask _groundMask;
 
+        [Tooltip("운반형 고유 동사 '옮긴다' 게이트 — 박스 밀기 가능 여부.\n" +
+                 "라이브가 이 정체성이면 그 라운드에서만 박스가 Dynamic이 되어 밀 수 있고, 궤적이 기록된다.")]
+        [SerializeField] private bool _canManipulateObjects;
+
         public string DisplayName => _displayName;
         public Color TintColor => _tintColor;
         public float MoveSpeed => _moveSpeed;
@@ -49,5 +53,8 @@ namespace AfterYou.Core
 
         /// <summary>접지 판정에 쓰는 레이어 마스크. Clone 레이어 포함 여부가 곧 "남의 등을 밟을 수 있는가"다.</summary>
         public LayerMask GroundMask => _groundMask;
+
+        /// <summary>박스 밀기 가능 여부(운반형 게이트). 라이브가 이 정체성일 때만 그 라운드 박스가 Dynamic으로 기록된다.</summary>
+        public bool CanManipulateObjects => _canManipulateObjects;
     }
 }

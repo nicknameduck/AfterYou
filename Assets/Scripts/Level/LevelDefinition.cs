@@ -21,9 +21,13 @@ namespace AfterYou.Level
         [Tooltip("이 레벨의 출구. LevelManager가 런타임에 RoundManager를 주입한다(_roundManager는 비워둠).")]
         [SerializeField] private LevelExit _levelExit;
 
+        [Tooltip("이 레벨의 밀 수 있는 박스들(없으면 빈 배열). RoundManager가 라운드마다 구동한다.")]
+        [SerializeField] private PushableBox[] _boxes;
+
         public string LevelName => _levelName;
         public IdentityData[] Identities => _identities;
         public Transform SpawnPoint => _spawnPoint;
         public LevelExit LevelExit => _levelExit;
+        public PushableBox[] Boxes => _boxes;
     }
 }
