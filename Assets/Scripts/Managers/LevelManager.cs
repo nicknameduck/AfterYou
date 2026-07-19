@@ -90,14 +90,42 @@ namespace AfterYou.Managers
             _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes);
         }
 
+        /// <summary>클리어 상태에서 다음 레벨로 넘어간다. N키와 Next 버튼(CharacterSelectUI)이 공용으로 호출한다.</summary>
+        public void LoadNextLevel()
+        {
+            if (_roundManager.State != RoundState.Cleared) return;
+
+            LoadLevel((_currentIndex + 1) % _levels.Length);
+        }
+
         private void Update()
         {
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // 디버그 전용 강제 스테이지 이동(임시 — 테스트 끝나면 제거 예정). 클리어 여부 무시.
+            Keyboard debugKeyboard = Keyboard.current;
+            if (debugKeyboard != null)
+            {
+                if (debugKeyboard.pageDownKey.wasPressedThisFrame)
+                {
+                    LoadLevel((_currentIndex + 1) % _levels.Length);
+                    return;
+                }
+                if (debugKeyboard.pageUpKey.wasPressedThisFrame)
+                {
+                    LoadLevel((_currentIndex - 1 + _levels.Length) % _levels.Length);
+                    return;
+                }
+            }
+#endif
+
             if (_roundManager.State != RoundState.Cleared) return;
 
             // New Input System 전용 프로젝트라 구 Input.GetKeyDown은 예외를 던진다.
             Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.nKey.wasPressedThisFrame)
-                LoadLevel((_currentIndex + 1) % _levels.Length);
+            // Enter는 Recording 상태의 클론 확정(RoundManager)에만 쓰여 Cleared 상태에선 충돌이 없다.
+            if (keyboard != null && (keyboard.nKey.wasPressedThisFrame
+                || keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+                LoadNextLevel();
         }
     }
 }

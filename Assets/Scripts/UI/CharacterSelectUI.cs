@@ -16,6 +16,8 @@ namespace AfterYou.UI
         [SerializeField] private RoundManager _roundManager;
         [SerializeField] private Button[] _slotButtons;
         [SerializeField] private Text _statusText;
+        [SerializeField] private LevelManager _levelManager;
+        [SerializeField] private Button _nextButton;
 
         private const string HelpLine = "1/2/3 Select | Enter Confirm | R Retake | Backspace Rewind";
 
@@ -29,6 +31,9 @@ namespace AfterYou.UI
                 int index = i;
                 _slotButtons[i].onClick.AddListener(() => _roundManager.SelectCharacter(index));
             }
+
+            if (_nextButton != null && _levelManager != null)
+                _nextButton.onClick.AddListener(() => _levelManager.LoadNextLevel());
         }
 
         private void Update()
@@ -47,11 +52,14 @@ namespace AfterYou.UI
                     _slotButtons[i].interactable = canSelect && !_roundManager.IsSlotConfirmed(i);
             }
 
+            if (_nextButton != null)
+                _nextButton.gameObject.SetActive(_roundManager.State == RoundState.Cleared);
+
             if (_statusText != null)
             {
                 if (_roundManager.State == RoundState.Cleared)
                 {
-                    _statusText.text = $"클리어! N키로 다음 레벨\n{HelpLine}";
+                    _statusText.text = $"클리어! Next 버튼 / Enter / N키로 다음 레벨\n{HelpLine}";
                 }
                 else
                 {
