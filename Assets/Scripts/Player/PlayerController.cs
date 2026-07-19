@@ -36,6 +36,8 @@ namespace AfterYou.Player
         [SerializeField] private Vector2 _wallCheckSize = new Vector2(0.15f, 0.8f);
         [Tooltip("측면 검출 박스의 중심에서의 수평 오프셋. 캐릭터 콜라이더 반폭(0.5)에 맞춘다.")]
         [SerializeField] private float _wallCheckOffset = 0.5f;
+        [Tooltip("벽점프 후 재부착을 차단하는 시간(초). 이 동안 수평 속도 덮어쓰기도 유예된다.")]
+        [SerializeField] private float _wallJumpLockout = 0.15f;
 
         private Rigidbody2D _rigidbody;
         private InputAction _moveAction;
@@ -53,6 +55,7 @@ namespace AfterYou.Player
         private bool _isWallAttached;
         private int _wallDirection;
         private float _savedGravityScale;
+        private float _wallJumpLockoutCounter;
 
         private void Awake()
         {
@@ -89,6 +92,12 @@ namespace AfterYou.Player
             // 접지 체크: 발밑 박스에 지면 레이어가 겹치는지
             _isGrounded = Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _groundLayer);
 
+            // 벽점프 락아웃: 재부착·수평 덮어쓰기를 잠시 막는다. 착지하면 즉시 해제(입력 무시 구간 최소화).
+            if (_isGrounded)
+                _wallJumpLockoutCounter = 0f;
+            else if (_wallJumpLockoutCounter > 0f)
+                _wallJumpLockoutCounter -= Time.deltaTime;
+
             // 벽타기: 매 틱 부착 조건을 재검증한다(자가 치유 — 접촉/입력이 사라지면 즉시 이탈).
             UpdateWallAttach();
 
@@ -113,6 +122,7 @@ namespace AfterYou.Player
                     _rigidbody.AddForce(Vector2.up * _jumpForce, ForceMode2D.Impulse);
                     _jumpBufferCounter = 0f;
                     _coyoteCounter = 0f;
+                    _wallJumpLockoutCounter = _wallJumpLockout;
                 }
             }
             else if (_jumpBufferCounter > 0f && _coyoteCounter > 0f)
@@ -131,6 +141,10 @@ namespace AfterYou.Player
                 _rigidbody.linearVelocity = new Vector2(0f, _moveInputY * _moveSpeed);
                 return;
             }
+
+            // 벽점프 락아웃 중에는 수평 덮어쓰기를 유예해 벽점프 임펄스(반대 방향 튕김)를 보존한다.
+            if (_wallJumpLockoutCounter > 0f)
+                return;
 
             // 수평 속도만 덮어쓰고 수직(중력/점프)은 물리에 맡긴다
             _rigidbody.linearVelocity = new Vector2(_moveInput * _moveSpeed, _rigidbody.linearVelocity.y);
@@ -168,7 +182,8 @@ namespace AfterYou.Player
                 if (oppositeInput || contactLost)
                     Detach();
             }
-            else if (inputDir != 0 && CheckClimbable(inputDir))
+            // 벽점프 직후에는 재부착을 락아웃한다(벽 방향 홀드 중 점프가 즉시 재부착으로 무효화되는 것 방지).
+            else if (_wallJumpLockoutCounter <= 0f && inputDir != 0 && CheckClimbable(inputDir))
             {
                 Attach(inputDir);
             }
