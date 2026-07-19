@@ -19,4 +19,4 @@ MonoBehaviour:
   _weight: 10
   _groundMask:
     serializedVersion: 2
-    m_Bits: 256
+    m_Bits: 3840

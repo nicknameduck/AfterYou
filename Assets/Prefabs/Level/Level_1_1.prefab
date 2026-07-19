@@ -208,7 +208,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: AfterYou::AfterYou.Level.PressurePlate
   _detectionMask:
     serializedVersion: 2
-    m_Bits: 513
+    m_Bits: 2561
   _detectionHeight: 0.1
   _standTolerance: 0.08
   _requiredWeight: 10

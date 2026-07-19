@@ -19,5 +19,5 @@ MonoBehaviour:
   _weight: 3
   _groundMask:
     serializedVersion: 2
-    m_Bits: 256
+    m_Bits: 3840
   _canManipulateObjects: 1

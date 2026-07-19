@@ -102,7 +102,7 @@ GameObject:
   - component: {fileID: 4400000000000000023}
   - component: {fileID: 4400000000000000024}
   - component: {fileID: 4400000000000000025}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: PushableBox
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -424,7 +424,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: AfterYou::AfterYou.Level.PressurePlate
   _detectionMask:
     serializedVersion: 2
-    m_Bits: 513
+    m_Bits: 2561
   _detectionHeight: 0.1
   _standTolerance: 0.08
   _requiredWeight: 10
