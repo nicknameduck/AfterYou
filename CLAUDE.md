@@ -32,13 +32,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **셸 검색 차단 훅** (`.claude/scripts/block-search-in-shell.ps1`)
 - 관련 프로젝트: LostPages(`D:\LostPages\`), CatLibrary(`D:\CatLibrary\`)
 
-## 오케스트레이션 운용 기준 (fable + 하네스 병용)
+## 오케스트레이션 운용 기준 (fable 기본 OFF + 하네스)
 
-fable 오케스트레이션(넓이: 비정형 작업 라우팅)과 하네스(깊이: 구현 파이프라인의 구조적 검증)는 역할을 나눠 병용한다. fable.md의 하네스 예외 조항이 이중 계층을 방지한다.
+fable 오케스트레이션 상시 병용은 폐기했다 — 일상 턴의 위임 오버헤드 대비 이득이 작다. 구현 파이프라인은 하네스가 담당한다.
 
-- **fable ON 상시** — 탐색·조사·설계 논의·잡무 등 비정형 작업은 오케스트레이터가 서브에이전트에 라우팅한다.
-- **중규모 이상 구현 작업은 `/harness`** — 하네스 진행 중에는 오케스트레이션 지침을 적용하지 않는다 (fable.md 예외 조항). 오케스트레이터가 하네스 위에 위임 계층을 얹지 않는다.
-- **하네스 모델 배분** — Planner(메인 루프=Fable 직접 수행)·Critic(model: fable)은 판단 품질 우선, Generator(model: opus)는 코드 대량 생성 토큰 절약. 상세는 하네스 스킬(SKILL.md)이 정의한다.
+- **fable은 기본 OFF** (`fable off`). 탐색·조사가 많은 세션에서 필요할 때만 일시적으로 `fable on` 한다. 켠 상태에서 하네스를 돌려도 fable.md의 하네스 예외 조항이 이중 계층을 방지한다.
+- **중규모 이상 구현 작업은 `/harness`** — fable 토글과 무관하게 하네스가 구현을 담당한다.
+- **하네스 모델 배분** — Planner(메인 루프 직접 수행)·Critic(model: fable)·Evaluator(model: fable)는 판단 품질 우선, Generator(model: opus)는 코드 대량 생성 토큰 절약. 스킬에 model이 명시되어 있어 fable 토글과 무관하게 적용된다. 상세는 하네스 스킬(SKILL.md)이 정의한다.
 - **1~2파일 사소한 수정·조회·논의는 메인 루프 직접** — 작업이 작아 토큰 절대량이 미미하고, 위임 왕복이 오히려 낭비다.
 
 ## 베이스라인 원칙 (Karpathy 4원칙)
