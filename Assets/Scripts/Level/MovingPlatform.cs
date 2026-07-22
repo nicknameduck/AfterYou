@@ -41,12 +41,19 @@ namespace AfterYou.Level
         [Tooltip("발바닥이 발판 윗면보다 이만큼 아래여도 '탔다'고 인정한다.")]
         [SerializeField] private float _riderTolerance = 0.08f;
 
+        /// <summary>지지체 판정 마스크: Ground(256)|Clone(512)|Climbable(1024)|Box(2048) = 3840.</summary>
+        private const int SupportMask = 3840;
+
         /// <summary>탑승자 질의 결과 버퍼(non-alloc 재사용).</summary>
         private readonly List<Collider2D> _overlapBuffer = new List<Collider2D>();
+
+        /// <summary>지지체 질의 전용 버퍼. 바깥 루프(_overlapBuffer)를 오염시키지 않도록 반드시 분리한다.</summary>
+        private readonly List<Collider2D> _supportBuffer = new List<Collider2D>();
 
         private Rigidbody2D _rigidbody;
         private Collider2D _collider;
         private ContactFilter2D _riderFilter;
+        private ContactFilter2D _supportFilter;
 
         /// <summary>Awake 시점 물리 위치. 왕복의 기준점이다.</summary>
         private Vector2 _basePosition;
@@ -73,6 +80,10 @@ namespace AfterYou.Level
 
             _riderFilter = new ContactFilter2D { useTriggers = false };
             _riderFilter.SetLayerMask(_riderMask);
+
+            // 지지체 질의 필터: 지형/클론/벽/박스(3840)만. 캐릭터(Default)는 여기 안 잡히므로 실질 제외 대상은 발판 자신뿐.
+            _supportFilter = new ContactFilter2D { useTriggers = false };
+            _supportFilter.SetLayerMask(SupportMask);
         }
 
         /// <summary>중앙 틱: 다음 위상 위치로 MovePosition하고, 그 이동분만큼 탑승자를 함께 옮긴다.</summary>
@@ -121,6 +132,13 @@ namespace AfterYou.Level
         }
 
         /// <summary>발판 윗면에 서 있는 라이브를 이번 스텝 이동분(delta)만큼 위치 가산으로 태운다.</summary>
+        /// <remarks>
+        /// 오검출 방지(3단 배제): 발판 상면이 지면 top과 같은 높이로 스윕하면, 발판에 탄 적 없는 지면 기립자의
+        /// 발바닥이 검출 박스에 걸려 함께 끌려간다(스위치 위 대기 → 가시 사망 재현). 그래서:
+        ///  ① 캐릭터 수평 중심 x가 발판 x범위 안일 것(가장자리 스침 배제),
+        ///  ② 발바닥이 발판 상면 높이일 것(기존 판정),
+        ///  ③ 발바닥 바로 아래에 캐릭터 수평 중심을 x범위로 '덮는' 다른 지지체(발판 자신 제외)가 없을 것.
+        /// </remarks>
         private void CarryRiders(Vector2 delta)
         {
             Bounds platformBounds = _collider.bounds;
@@ -141,8 +159,38 @@ namespace AfterYou.Level
                 CharacterActor actor = other.GetComponentInParent<CharacterActor>();
                 if (actor == null) continue;
 
-                // 발바닥이 발판 윗면 높이에 있어야 "탔다".
+                Collider2D actorCollider = actor.Collider;
+                if (actorCollider == null) continue;
+
+                Bounds charBounds = actorCollider.bounds;
+                float charCenterX = charBounds.center.x;
+
+                // ① 수평 중심이 발판 x범위 안이어야 발판이 지지체 후보다.
+                if (charCenterX < platformBounds.min.x || charCenterX > platformBounds.max.x) continue;
+
+                // ② 발바닥이 발판 윗면 높이에 있어야 "탔다".
                 if (other.bounds.min.y < platformTop - _riderTolerance) continue;
+
+                // ③ 발바닥 바로 아래에 '다른 지지체'가 캐릭터 수평 중심을 덮고 있으면(진짜 발판이 따로 있음) 태우지 않는다.
+                //    x범위 중심 포함 조건이 핵심 — 옆에서 밀착한 클론 몸통이 얇은 박스에 걸려도 중심을 못 덮으면
+                //    배제 근거가 아니다(진짜 탑승자를 안 태우는 오배제 방지).
+                Vector2 probeCenter = new Vector2(charCenterX, charBounds.min.y);
+                Vector2 probeSize = new Vector2(charBounds.size.x, _riderTolerance * 2f);
+                Physics2D.OverlapBox(probeCenter, probeSize, 0f, _supportFilter, _supportBuffer);
+
+                bool hasOtherSupport = false;
+                for (int j = 0; j < _supportBuffer.Count; j++)
+                {
+                    Collider2D support = _supportBuffer[j];
+                    if (support == null || support == _collider) continue; // 발판 자신 제외
+
+                    if (support.bounds.min.x <= charCenterX && charCenterX <= support.bounds.max.x)
+                    {
+                        hasOtherSupport = true;
+                        break;
+                    }
+                }
+                if (hasOtherSupport) continue;
 
                 actor.SetPosition(actor.Position + delta);
             }

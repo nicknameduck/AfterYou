@@ -1,71 +1,64 @@
-# 하네스 최신 결과 (2026-07-22) — Phase 3-3 환경 기믹 5종 [REFINE 1회차]
+# 하네스 최신 결과 (2026-07-23) — Phase 3-3b 기믹 확장 (신규 2종 + 캐리 Major 수정)
 
 ## 스펙
 
-Phase 3-3 환경 기믹 시스템 — 프리팹 설치형 신규 기믹 5종 구현.
-1. 신규 기믹 5종: 토글 스위치, 시간제한 문, 이동 발판, 가시, 낙하 구멍
-2. 배선 구조: IActivatable 인터페이스 + 다대상 리스트(스위치 하나로 문 여러 개). 신규 기믹에만 적용 — 기존 PressurePlate/Door 1:1은 무수정
-3. 사망 처리: 가시/낙하 구멍에 라이브 접촉 시 RestartTake로 현재 테이크만 재시작. 클론은 통과(결정성)
-4. 프리팹화 범위: 신규 기믹만 독립 프리팹(Assets/Prefabs/Gimmicks/ 신설). 기존 레벨 1_1~1_5 무수정
-5. 결정성: 시간제한 문·이동 발판은 실시간 타이머 금지, RoundManager 틱 기반
-6. 사용자 의도(핵심): 기믹을 프리팹/데이터로 관리하고 레벨에 "설치"하는 방식 — 향후 본 맵에서 재사용
-7. 검증: Level_1_6 테스트 레벨에서 실측. 배선/설치가 실제로 동작해야 함
+Phase 3-3b 기믹 확장.
+1. **깨지는 발판(CrumblingPlatform)**: 캐릭터(513, 라이브+클론) 밟으면 N틱 카운트다운 후 붕괴(콜라이더 off), 테이크/되감기/사망 3경로 복원, Ground 레이어, 클론 재생이 붕괴 틱 재현(결정성)
+2. **정체성 제한 포탈(IdentityPortal)**: A↔B 양방향 쌍, IdentityData[] 허용 리스트(참조 동일성) — 허용 정체성의 라이브만 텔레포트, 도착 후 영역 이탈 전 재작동 금지 래치, 클론 미작동(마스크 1), rb+transform 동시 세팅
+3. **[Major] MovingPlatform 캐리 오검출 수정**: 지지체 소유 판정 + Level_1_6 스위치 스윕 코리더 밖 이동
+4. ITickGimmick 편입·RoundManager/LevelManager 무수정·중첩 프리팹 인스턴스(bake 금지)
+5. 씬 상주 바닥 기준 배치 + 실플레이 검증, 전부 틱 기반
 
-## 동작 조건 (평가 결과 — REFINE 후)
+## 동작 조건 (평가 결과)
 
 - [✓] 컴파일 에러 0
-- [✓] Assets/Prefabs/Gimmicks/에 프리팹 5개 존재
-- [✓] Level_1_6에 중첩 프리팹 인스턴스 6개(PrefabInstance + m_SourcePrefab guid 일치) — 1회차 ✗ 해소
-- [✓] 씬 _levels 등록·LoadLevel(5) 실측 성공
-- [✗] 기믹 5종 실플레이 안전 도달 — 매몰은 해소됐으나 **스위치가 발판 스윕 코리더 내부** → 캐리 오검출과 결합해 스위치 점유 시 강제 사망 (Major 1·2)
-- [✓] 토글 → 문 2개 동시 제어(다대상), 재밟기 닫힘 실측
-- [✓] 시간제한 문 틱 환산(150틱) 자동 닫힘 + 자기 동기화 후 **한 번 밟기 재개방** 실측 — 1회차 Minor 1 해소
-- [△] 발판 왕복·캐리·접지 — 왕복 ✓, 캐리 동작 ✓, 단 **비탑승자(지면 기립자) 오검출 드래그** (Major 1). 접지는 정적 근거만(레이어 8 + 마스크 3840)
-- [✓] 가시 사망(5회 재현)·클론 무시(마스크 1 + 참조 동일성 이중 방어)
-- [✓] FallZone 낙하 사망 → RestartTake
-- [✓] **사망 재시작 위상 desync 0** (_tick==_phaseTicks=81) — 1회차 Major 3 해소 (플래그 지연 처리)
-- [✓] 테이크 시작/되감기/사망 시 기믹 리셋 (EnterSelecting·RestartTake·Initialize 3경로)
-- [✓] 클론 재생이 스위치 재토글(마스크 513) — 사망 인터럽트 후 재생 재현까지 실측
-- [✓] RoundManager 보호 블록 diff 0 (순수 추가만)
-- [✓] 기존 레벨·기존 스크립트 회귀 없음 (Initialize 호출처 LevelManager.cs:97 유일 확인)
+- [✓] Gimmicks/ 프리팹 7개 (기존 5 + CrumblingPlatform·IdentityPortal)
+- [✓] Level_1_7 중첩 PrefabInstance ×4(FallZone 재사용 포함) + 씬 7번째 등록·LoadLevel(6) 성공
+- [✓] 붕괴: N틱→콜라이더 off→낙하, 경고색 보간, 3경로(테이크/되감기/사망) 복원 전부 실측
+- [✓] 붕괴 결정성: 라이브 T1=577, 클론 재생 T2=577 — **동일 틱 재현 실측**
+- [✓] 포탈: Heavy 이동 / Light 327틱 무반응(참조 동일성), rb+transform 동시(CharacterActor.SetPosition)
+- [✓] 렛지 게이트: Light 도달고 3.33m < 필요 3.7m(산술) / Heavy 포탈로만 도달(실측)
+- [✓] 왕복 래치: 323틱 점유 재텔레포트 0회 → 이탈 시 같은 테이크 내 해제 → 재사용, 리셋 시 해제
+- [✓] 클론 포탈 무작동: 클론 327틱 상주 — 텔레포트 0회·래치 오염 없음
+- [✓] 캐리 오검출 소멸: 7회 스윕 통과에도 지면 기립자 x 부동(1회차 사망 시나리오 소멸)
+- [✓] 캐리 정상 유지: 갭 횡단 캐리 + 경계 안착 생존
+- [✓] Level_1_6 스위치 x=-7(코리더+동선 밖) + 문 2개 배선 유지
+- [✓] RoundManager/LevelManager 전체 diff 0 (git status 미포함)
+- [✓] 기존 레벨·기믹 회귀 없음 (Level_1_1/1_6 실측, 콘솔 에러 0)
 
 ## 참조 패턴
 
-- [코어시스템 #1] 중앙 틱 단일 소유 + 초→틱 환산 / [데이터주도설계 #2] 기하 판정·3중 필터·엣지 통지 / [시스템조립 #3] Bind 주입·리스트 수집·diff 0 증명
+- [시스템조립 #5] 설치형 틱 기믹 시스템(골격 전체 — 반복 성공)
+- [데이터주도설계 #2] 게이트를 데이터로(IdentityData 허용 리스트)
+- [코어시스템 #1] 자가 캡처 함정(지지체 질의 자기 콜라이더 제외)
 
 ## 점수
 
-**총점 88/100** (1회차 72 → +16)
+**총점 99/100** (95점 게이트: 적대 3/3 실측 통과 + 스펙 감사 누락 0건)
 
 | 항목 | 배점 | 득점 |
 |---|---|---|
 | 코딩 컨벤션 | 12 | 12 |
 | Unity 생명주기 | 9 | 9 |
-| 성능 | 10 | 8 |
+| 성능 | 10 | 9 |
 | 안전성 | 9 | 9 |
-| 기능 충족 | 23 | 13 |
+| 기능 충족 | 23 | 23 |
 | 적대 검증 | 17 | 17 |
 | 단순성 | 10 | 10 |
 | 완결성 | 10 | 10 |
 
 ## 피드백
 
-### Major (잔여 2건 — 단일 결함 축)
-1. **MovingPlatform 캐리 오검출 — 지면 기립자를 탑승자로 드래그** (MovingPlatform.cs:124-148, 판정 :145). 발판 상면(-1.5)이 지면 top(-1.5)과 동일 높이로 스윕하면 발판 위 검출대역이 지면 기립 캐릭터 발바닥과 겹쳐 발판 속도로 끌고 감. "무엇 위에 서 있는가"(지지체 소유) 판정 부재. 실측: 스위치 위 대기 ~1.3초 → 가시로 드래그 사망, 5회 재현
-2. **Level_1_6 배치 결함 — 스위치(x=1.5)가 발판 스윕 코리더(x∈[-3,2]) 내부** — 1과 결합해 검증 레벨이 자체 기믹 간섭으로 오염. 수정 방향: 캐리 판정 강화(지지체 소유/높이 차 요구) 또는 발판 스윕 구간과 지면 높이 분리 배치
+### Major
+없음.
 
 ### Minor
-1. 핫패스 매 틱 GetComponentInParent 3곳 (주석 자인, 성능 -2)
-2. ToggleSwitch 1틱 바운스 이중 토글 가능성 (주석 자인, 미실측)
-3. TimedDoor가 Door와 콜라이더/색 토글 중복 (기존 Door 불변 스펙상 허용)
-4. [관측만] 세션 초반 1회 `_isInitialized=true && _gimmicks=null` 상태 Rewind NRE — 재현 3회 실패, 코드 경로상 도달 불가, 원인 미상 기록
-
-### 1회차 대비 해소된 항목
-- Major 1(매몰)·Major 2(PrefabInstance 0건)·Major 3(사망 desync) 전부 해소
-- Minor 1(토글 자기 동기화)·Minor 2(bool 네이밍)·Minor 3(수동문 분기 제거) 해소
+1. 핫패스 GetComponentInParent — MovingPlatform.cs:159, CrumblingPlatform.cs:131, IdentityPortal.cs:105 (알려진 제약 자가 문서화, 콜라이더→액터 캐시로 개선 가능)
+2. 동일 높이 구간 캐리 의미론 — 발판 top=지면 top 구간에서 탑승자가 지면에 인계됨(실측 무해). "동일 높이 지면을 가로지르며 계속 태우는" 레벨 설계 시 이 경계가 드러남 — 레벨 설계 가이드에 명시 권장
+3. 포탈 텔레포트 속도 보존(의도 설계) — 고속 낙하 중 진입 시 도착지 관통 가능성은 배치 시 유의
+4. 클론 라운드의 붕괴 "완료" 순간 자체는 미실측(트리거 틱 동일성 577=577 + 틱 순수함수로 함의)
 
 ## 수정 파일
 
-- 수정: Assets/Scripts/Managers/RoundManager.cs (+63 누적, 순수 삽입 — _isDeathPending 플래그 지연 처리 포함), Assets/Scripts/Managers/LevelManager.cs (+9), Assets/Scenes/SampleScene.unity (+1)
-- 신규: Assets/Scripts/Level/{IActivatable,ITickGimmick,ToggleSwitch,TimedDoor,MovingPlatform,KillZone}.cs
-- 신규: Assets/Prefabs/Gimmicks/{ToggleSwitch,TimedDoor,MovingPlatform,Spikes,FallZone}.prefab, Assets/Prefabs/Level/Level_1_6.prefab (중첩 인스턴스 6개 + _targets 오버라이드 배선)
+- 수정: Assets/Scripts/Level/MovingPlatform.cs(+50/-2, 캐리 3단 배제), Assets/Prefabs/Level/Level_1_6.prefab(1줄 — 스위치 x=-7), Assets/Scenes/SampleScene.unity(1줄 — Level_1_7 등록)
+- 신규: Assets/Scripts/Level/{CrumblingPlatform,IdentityPortal}.cs, Assets/Prefabs/Gimmicks/{CrumblingPlatform,IdentityPortal}.prefab, Assets/Prefabs/Level/Level_1_7.prefab
