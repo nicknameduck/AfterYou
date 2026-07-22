@@ -2,10 +2,12 @@
 
 > 이 파일은 **날짜 로그와 달리 항상 덮어쓴다.** 새 세션은 이 파일 하나로 "지금 어디인지"를 파악하고, 상세 이력은 날짜 파일을 참조한다.
 
-**마지막 갱신**: 2026-07-21
+**마지막 갱신**: 2026-07-22
 
 ## 현재 위치
 
+- **Phase 3-3 환경 기믹 5종 완료 · 커밋 진행** (하네스 1회차 72 → Refine 88/100) — 토글 스위치/시간제한 문/이동 발판/가시/낙하 구멍. IActivatable+ITickGimmick 설치형 구조, Assets/Prefabs/Gimmicks/ 5종 + Level_1_6(중첩 프리팹 인스턴스 첫 사례, 씬 _levels 6번째). **잔여 Major: 발판 캐리가 지면 기립자 오검출**(아래 다음 작업 1)
+- **fable 잔여 폴더 삭제 완료** (2026-07-22) — `~/.claude/fable/` 제거, 백업만 유지
 - **Phase 3-2 완료 · 커밋됨** (`191c90a` — 벽타기형 정체성 벽만, 하네스 v2 첫 실행 90/100). 코어 4종 전부 가동(무거운/가벼운/운반/벽타기 — 천장 제외)
 - **벽점프 락아웃 수정 · 커밋됨** (`2300a0e`, 2026-07-19) — `PlayerController.cs` 재부착 락아웃 0.15s + 락아웃 중 수평 덮어쓰기 유예 + 접지 시 즉시 해제
 - **접지 통일 · 커밋됨** (`b7e8f2e`, 2026-07-19) — 전 정체성 접지 마스크 3840(Ground|Clone|Climbable|Box), Box 레이어(11) 신설, PushableBox 레이어 이동(프리팹 + Level_1_4 내장 박스), 압력판 마스크 513→2561
@@ -15,10 +17,10 @@
 
 ## 다음 작업 (우선순위 + 차단 관계)
 
-1. **[사용자 몫] Level_1_4/1_5 플레이테스트** — 박스 밀기 + 벽타기 + 벽점프(수정분) 체감. 감각 문제 시 수치 조정 후 진행
-2. **환경 기믹 6~8종** (Phase 3-3) — 토글 스위치, 시간제한 문, 이동 발판, 가시, 낙하 구멍
-3. **클리어 리플레이 연출(§9.3) → undo 스택 리셋** (Phase 3 잔여) / **천장 이동** — 가시·낙하 기믹 도입 후 확장
-4. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / `PressurePlate.cs:113` 핫패스 트래버스 / 클라이머 이탈 블립 중 기둥탑 마운트(향후 Climbable 지형 설계 유의)
+1. **[미해결 Major] MovingPlatform 캐리 오검출 수정** — 발판 상면이 지면 top(-1.5)과 같은 높이로 스윕하면 발판에 탄 적 없는 지면 기립자를 드래그(Level_1_6에서 스위치 위 ~1.3초 대기 → 가시 사망 5회 재현, MovingPlatform.cs:124-148). 지지체 소유 판정(예: 직전 틱 접촉 이력) 추가 + Level_1_6 스위치를 스윕 코리더(x∈[-3,2]) 밖으로 이동. 사용자가 88점에서 완료 처리 선택 — 인지된 채 보류
+2. **[사용자 몫] Level_1_4/1_5/1_6 플레이테스트** — 기존 대기(박스 밀기+벽타기+벽점프) + 신규 기믹 5종 감각(문 3초 타이밍, 발판 캐리감, 골짜기 낙하)
+3. **클리어 리플레이 연출(§9.3) → undo 스택 리셋** (Phase 3 잔여) / **천장 이동** — 가시·낙하 도입됐으므로 착수 가능
+4. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / `PressurePlate.cs:113`·기믹 3곳 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만)
 
 ## 유효 제약 (건드리면 깨지는 것들)
 
@@ -33,6 +35,10 @@
 - **스태거 연출은 알파만 지연** — 스폰 타이밍을 늦추면 궤적 전체가 밀려 협력 타이밍 붕괴
 - **RoundManager 보호 블록** (ResolveCrush/Push/중앙 틱/IgnoreCollision 관리) — 하네스 작업 시 diff 0 유지 대상
 - **IgnoreCollision 복구 4개 진입점** — EnterSelecting/Rewind/ConfirmClone/RestartTake 전부에서 전체복구. 누락 시 클론 밟기가 영영 불가
+- **기믹 리셋 3경로** — Initialize/EnterSelecting/**RestartTake**(EnterSelecting 우회 경로라 별도 필수). 하나라도 빠지면 토글/타이머/위상이 잔존해 클론 재생 결정성 붕괴
+- **순회 중 상태 전환 금지** — KillZone 사망은 `_isDeathPending` 플래그만, 처리는 DriveGimmicks 완료 후 단일 지점(재생/기록/틱 증가 전 return). 루프 안에서 RestartTake를 즉시 부르면 킬존 배열 위치 따라 1틱 desync
+- **DriveGimmicks 위치 고정** — DriveBoxes 직후·클론 ApplyTick 이전. 뒤로 옮기면 라이브/클론 1틱 어긋남
+- **기믹 검출 마스크 규약** — 스위치류 513(라이브+클론 — 클론이 이력을 재현해야 결정성 성립), KillZone·캐리 1(라이브만). 씬 상주 바닥은 top y=-2.5, x[-12,12] — 레벨 배치는 이 위 기준
 
 ## 확정 사양 / 폐기한 접근
 
@@ -49,9 +55,12 @@
 - **무거운형은 클론 위에 서 있을 수 있으나 점프만 불가** — 접지 마스크에 Clone 없음. `excludeLayers`는 ResolveCrush와 모순되어 **폐기**
 - **동적 캐릭터 생성 = 비활성 부모 트릭** — SetActive(false) 부모 아래 Instantiate로 Awake 지연 → InjectIdentity → SetActive(true). Critic 판정상 유일한 방법
 - **레벨별 스폰** — 레벨 프리팹이 자기 SpawnPoint를 자식으로 포함, LevelManager가 로드 시 RoundManager에 주입
+- **기믹은 설치형** (2026-07-22, 사용자 결정) — 독립 프리팹(Assets/Prefabs/Gimmicks/)을 레벨에 **중첩 프리팹 인스턴스**로 설치(MCP `create_child+source_prefab_path`, bake 복사 금지 — 재사용 계약). 인터페이스 2분할: IActivatable(수신)+ITickGimmick(구동·리셋). LevelDefinition 등록 불필요 — LevelManager가 GetComponentsInChildren로 자동 수집. 기존 레벨 1_1~1_5의 baked 압력판/문은 프로토타입으로 유지(전환 안 함)
+- **기믹 상태는 기록하지 않는다** — 매 테이크 리셋 + 틱 환산 시간 + 라이브·클론 겸용 검출(513)이면 클론 재생이 활성화 이력을 자동 재현. 기존 레벨은 프로토타입, 본 맵은 별도 제작 예정
 
 ## 상세 이력
 
+- [2026-07-22.md](2026-07-22.md) — Phase 3-3 환경 기믹 5종 설치형 (하네스 72→Refine 88)
 - [2026-07-18.md](2026-07-18.md) — 공유 스폰 포인트 + 스태거 페이드인 / Phase 2b 레벨 프리팹 시스템
 - [2026-07-12.md](2026-07-12.md) — Phase 1 녹화·재생 코어 / Phase 2a 정체성(SO) + 압력판/문
 - [2026-07-08.md](2026-07-08.md) — Phase 0 세팅 + 기본 이동·점프

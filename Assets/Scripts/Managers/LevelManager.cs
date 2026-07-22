@@ -85,9 +85,16 @@ namespace AfterYou.Managers
             if (_currentLevel.LevelExit != null)
                 _currentLevel.LevelExit.BindRoundManager(_roundManager);
 
+            // 5-1) 환경 기믹 수집 + 킬존 주입. (true)로 비활성 상태로 설치된 기믹도 수집한다 — 스위치로 켜질 문 등.
+            //      킬존은 LevelExit처럼 씬의 RoundManager를 직렬화 참조할 수 없어 여기서 주입한다.
+            ITickGimmick[] gimmicks = _currentLevel.GetComponentsInChildren<ITickGimmick>(true);
+            KillZone[] killZones = _currentLevel.GetComponentsInChildren<KillZone>(true);
+            for (int i = 0; i < killZones.Length; i++)
+                killZones[i].BindRoundManager(_roundManager);
+
             // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
-            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes);
+            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes, gimmicks);
         }
 
         /// <summary>클리어 상태에서 다음 레벨로 넘어간다. N키와 Next 버튼(CharacterSelectUI)이 공용으로 호출한다.</summary>

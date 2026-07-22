@@ -38,6 +38,9 @@ namespace AfterYou.Managers
         // 레벨의 밀 수 있는 박스들(런타임 주입). 라운드마다 중앙 틱으로 구동해 기록/재생한다.
         private PushableBox[] _boxes;
 
+        // 레벨의 환경 기믹들(런타임 주입). 라운드마다 중앙 틱으로 구동/리셋한다. 비활성 상태로 설치된 기믹도 틱을 받는다.
+        private ITickGimmick[] _gimmicks;
+
         [Header("Recording")]
         [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
         [SerializeField] private float _maxRecordSeconds = 15f;
@@ -75,6 +78,9 @@ namespace AfterYou.Managers
         /// <summary>LevelManager.Initialize가 끝났는가. false면 입력/틱/재생을 전부 무시한다(레벨 전환 중 안전장치).</summary>
         private bool _isInitialized;
 
+        /// <summary>킬존이 이번 틱에 라이브 사망을 통지했는가. FixedUpdate가 중앙 틱 진입 "전"에 이 플래그를 보고 재시작한다.</summary>
+        private bool _isDeathPending;
+
         /// <summary>현재 라이브를 덮치고 있는 클론 슬롯. 완전히 빠져나올 때까지 래치된다(-1 = 없음).</summary>
         private int _crushSlot = -1;
 
@@ -109,11 +115,12 @@ namespace AfterYou.Managers
         /// 순서 엄수: 이전 레벨 잔재(_confirmedSlots 등)를 먼저 비운 뒤에야 originalParents를 기록하고
         /// 스폰을 통일한다. 잔재를 남기면 다음 레벨의 Rewind가 파괴된 Transform으로 SetParent를 시도한다.
         /// </remarks>
-        public void Initialize(CharacterActor[] characters, Transform spawnPoint, PushableBox[] boxes)
+        public void Initialize(CharacterActor[] characters, Transform spawnPoint, PushableBox[] boxes, ITickGimmick[] gimmicks)
         {
             _characters = characters;
             _spawnPoint = spawnPoint;
             _boxes = boxes ?? System.Array.Empty<PushableBox>();
+            _gimmicks = gimmicks ?? System.Array.Empty<ITickGimmick>();
 
             _confirmedSlots.Clear();
             _originalParents.Clear();
@@ -124,9 +131,14 @@ namespace AfterYou.Managers
             for (int i = 0; i < _boxes.Length; i++)
                 _boxes[i].ClearOwnership();
 
+            // 기믹도 초기 상태로 리셋한다(이전 레벨 잔재 방지).
+            for (int i = 0; i < _gimmicks.Length; i++)
+                _gimmicks[i].ResetGimmick();
+
             _tick = 0;
             _liveIndex = -1;
             _crushSlot = -1;
+            _isDeathPending = false;
 
             for (int i = 0; i < _characters.Length; i++)
                 _originalParents[i] = _characters[i].transform.parent;
@@ -159,9 +171,11 @@ namespace AfterYou.Managers
             _tick = 0;
             _liveIndex = -1;
             _crushSlot = -1;
+            _isDeathPending = false;
             _state = RoundState.Selecting;
             _characters = null;
             _boxes = null;
+            _gimmicks = null;
         }
 
         private void OnEnable()
@@ -222,6 +236,19 @@ namespace AfterYou.Managers
 
             // 박스 구동: 틱 증가 전 현재 _tick 값으로 재생/기록한다 → 클론과 동일 틱을 공유.
             DriveBoxes(_tick);
+
+            // 기믹 구동: 박스와 동일 틱을 공유하도록 틱 증가 "이전"에 호출한다.
+            DriveGimmicks(_tick);
+
+            // 사망 처리: 킬존이 DriveGimmicks 순회 중 세운 플래그를, 중앙 틱(재생/기록/틱 증가) 진입 "전"에 처리한다.
+            // 루프 안에서 곧장 RestartTake하면 킬존 인덱스 뒤의 기믹만 같은 FixedUpdate에서 한 번 더 구동돼
+            // 1틱 위상 desync가 난다. 여기서 return하면 이번 틱의 재생/기록/증가가 통째로 스킵돼 desync 0.
+            if (_isDeathPending)
+            {
+                _isDeathPending = false;
+                RestartTake();
+                return;
+            }
 
             // 순서 엄수: 재생 → 기록 → 틱 증가.
             // 같은 _tick에서 클론과 라이브가 동일한 물리 스텝을 공유해야 궤적이 재현된다.
@@ -499,6 +526,11 @@ namespace AfterYou.Managers
             _liveIndex = -1;
             _state = RoundState.Selecting;
 
+            // 죽음→재시작 시에도 기믹을 초기화해야 결정성이 유지된다.
+            // RestartTake는 EnterSelecting을 우회하므로(위 주석) 여기서 직접 리셋한다.
+            for (int i = 0; i < _gimmicks.Length; i++)
+                _gimmicks[i].ResetGimmick();
+
             SelectCharacter(index);
         }
 
@@ -551,6 +583,22 @@ namespace AfterYou.Managers
         }
 
         /// <summary>
+        /// 킬존(KillZone)이 라이브의 사망을 통지할 때 호출한다. 녹화 중이면 현재 테이크를 재시작한다.
+        /// </summary>
+        /// <remarks>
+        /// 즉시 RestartTake하지 않고 플래그만 세운다 — 이 메서드는 DriveGimmicks 순회 도중 불리므로,
+        /// 여기서 곧장 재시작하면 킬존 인덱스 뒤의 기믹이 같은 FixedUpdate에서 한 번 더 구동돼 위상이 어긋난다.
+        /// FixedUpdate가 중앙 틱 진입 전에 이 플래그를 보고 재시작한다.
+        /// </remarks>
+        public void OnLiveDied()
+        {
+            if (!_isInitialized) return;
+            if (_state != RoundState.Recording) return;
+
+            _isDeathPending = true;
+        }
+
+        /// <summary>
         /// 남은 스폰 겹침 쌍의 충돌을 전부 복구하고 리스트를 비운다.
         /// 복구를 빠뜨리면 이후 "클론 밟기"가 영영 안 되므로 상태 전환마다 반드시 호출한다.
         /// </summary>
@@ -593,6 +641,10 @@ namespace AfterYou.Managers
                 _boxes[i].ResetToBase();
             }
 
+            // 기믹도 초기 상태로 되돌린다.
+            for (int i = 0; i < _gimmicks.Length; i++)
+                _gimmicks[i].ResetGimmick();
+
             _tick = 0;
             _state = RoundState.Selecting;
         }
@@ -612,6 +664,15 @@ namespace AfterYou.Managers
                 else if (box.OwnerSlot >= 0 && box.Mode == PushableBoxMode.Replay)
                     box.ApplyBoxTick(tick);
             }
+        }
+
+        /// <summary>
+        /// 중앙 틱에 맞춰 환경 기믹을 구동한다. 박스/클론과 동일한 _tick을 공유하도록 틱 증가 "이전"에 호출된다.
+        /// </summary>
+        private void DriveGimmicks(int tick)
+        {
+            for (int i = 0; i < _gimmicks.Length; i++)
+                _gimmicks[i].DriveGimmickTick(tick);
         }
 
         /// <summary>
