@@ -1,64 +1,50 @@
-# 하네스 최신 결과 (2026-07-23) — Phase 3-3b 기믹 확장 (신규 2종 + 캐리 Major 수정)
+# 하네스 최신 결과 (2026-07-25) — 아트 Step 2: 클론 스캔라인 셰이더 + REC 오버레이
 
 ## 스펙
-
-Phase 3-3b 기믹 확장.
-1. **깨지는 발판(CrumblingPlatform)**: 캐릭터(513, 라이브+클론) 밟으면 N틱 카운트다운 후 붕괴(콜라이더 off), 테이크/되감기/사망 3경로 복원, Ground 레이어, 클론 재생이 붕괴 틱 재현(결정성)
-2. **정체성 제한 포탈(IdentityPortal)**: A↔B 양방향 쌍, IdentityData[] 허용 리스트(참조 동일성) — 허용 정체성의 라이브만 텔레포트, 도착 후 영역 이탈 전 재작동 금지 래치, 클론 미작동(마스크 1), rb+transform 동시 세팅
-3. **[Major] MovingPlatform 캐리 오검출 수정**: 지지체 소유 판정 + Level_1_6 스위치 스윕 코리더 밖 이동
-4. ITickGimmick 편입·RoundManager/LevelManager 무수정·중첩 프리팹 인스턴스(bake 금지)
-5. 씬 상주 바닥 기준 배치 + 실플레이 검증, 전부 틱 기반
+아트 Step 2 잔여 — 클론 스캔라인 셰이더 + REC 오버레이:
+(1) 클론 고스트 셰이더: 재생 중인 클론 스프라이트에 스캔라인(흰색, 알파 8~12%) + 밝기 미세 지터를 적용하는 URP 2D 스프라이트 셰이더 + 머티리얼. RGB=정체성 색(vertex color) 보존, 알파 규약(CloneAlpha 0.5 × revealProgress) 완전 호환. 위치 지터 금지(밝기/UV만) — ART-DIRECTION.md §3·§4 준수. 라이브는 기존 머티리얼 유지, 클론 모드만 적용(CharacterActor.SetMode 연동).
+(2) REC 오버레이: 녹화(Recording) 중일 때만 화면 구석 REC● UI(1Hz 점멸, REC 레드 #FF3B30, OSD 오프화이트 #E8ECF2). RoundManager 상태 기준 표시/숨김, 기존 Canvas 활용. 워크트리 OFF.
 
 ## 동작 조건 (평가 결과)
-
-- [✓] 컴파일 에러 0
-- [✓] Gimmicks/ 프리팹 7개 (기존 5 + CrumblingPlatform·IdentityPortal)
-- [✓] Level_1_7 중첩 PrefabInstance ×4(FallZone 재사용 포함) + 씬 7번째 등록·LoadLevel(6) 성공
-- [✓] 붕괴: N틱→콜라이더 off→낙하, 경고색 보간, 3경로(테이크/되감기/사망) 복원 전부 실측
-- [✓] 붕괴 결정성: 라이브 T1=577, 클론 재생 T2=577 — **동일 틱 재현 실측**
-- [✓] 포탈: Heavy 이동 / Light 327틱 무반응(참조 동일성), rb+transform 동시(CharacterActor.SetPosition)
-- [✓] 렛지 게이트: Light 도달고 3.33m < 필요 3.7m(산술) / Heavy 포탈로만 도달(실측)
-- [✓] 왕복 래치: 323틱 점유 재텔레포트 0회 → 이탈 시 같은 테이크 내 해제 → 재사용, 리셋 시 해제
-- [✓] 클론 포탈 무작동: 클론 327틱 상주 — 텔레포트 0회·래치 오염 없음
-- [✓] 캐리 오검출 소멸: 7회 스윕 통과에도 지면 기립자 x 부동(1회차 사망 시나리오 소멸)
-- [✓] 캐리 정상 유지: 갭 횡단 캐리 + 경계 안착 생존
-- [✓] Level_1_6 스위치 x=-7(코리더+동선 밖) + 문 2개 배선 유지
-- [✓] RoundManager/LevelManager 전체 diff 0 (git status 미포함)
-- [✓] 기존 레벨·기믹 회귀 없음 (Level_1_1/1_6 실측, 콘솔 에러 0)
+- [✓] CloneGhost.shader 컴파일 에러 0, CloneGhost.mat이 해당 셰이더 사용 (isSupported=True, ShaderHasError=False)
+- [✓] 클론 모드 sharedMaterial == CloneGhost.mat, 라이브/대기는 기본(Sprite-Lit-Default) — 플레이 실측
+- [✓] 확정→되감기→재선택 왕복 후 기본 머티리얼 복원 (2단 Rewind 실측)
+- [✓] 클론 2기 sharedMaterial 참조 동일(ReferenceEquals=True, 에셋 원본 — 인스턴스 복제 없음)
+- [✓] 스캔라인 시각 효과 — RT 픽셀 실측 4px 주기 줄무늬(ΔL≈0.016~0.02)
+- [✓] 클론 RGB=TintColor, 알파=0.5×revealProgress 유지, ClonePlayback 수정 0줄
+- [✓] 위치 지터 없음 (버텍스는 UnityFlipSprite+TransformObjectToHClip만)
+- [✓] Canvas 하위 RecIndicator 존재, Recording에서만 표시 (RectTransform 우상단 (1810,1026)~(1890,1050) 화면 내)
+- [✓] REC 점 #FF3B30 1Hz 점멸(양 위상 실측), 라벨 #E8ECF2
+- [✓] Selecting/Cleared에서 숨김 (Cleared 강제 주입 실측 포함)
+- [✓] 코어 파일(RoundManager/ClonePlayback/CharacterRecorder/RecordedFrame) 수정 0줄, CharacterActor 기존 라인 삭제 0 (git diff +31/-0)
 
 ## 참조 패턴
-
-- [시스템조립 #5] 설치형 틱 기믹 시스템(골격 전체 — 반복 성공)
-- [데이터주도설계 #2] 게이트를 데이터로(IdentityData 허용 리스트)
-- [코어시스템 #1] 자가 캡처 함정(지지체 질의 자기 콜라이더 제외)
+- [코어시스템] #1 모드 전환 단일 캡슐화 — 머티리얼 스왑을 SetMode 안에서만 수행
+- [상태 머신] #4 "불변 라인 지정 + 삽입만" — SetMode 보호 블록 바이트 불변 유지
 
 ## 점수
-
-**총점 99/100** (95점 게이트: 적대 3/3 실측 통과 + 스펙 감사 누락 0건)
-
-| 항목 | 배점 | 득점 |
-|---|---|---|
-| 코딩 컨벤션 | 12 | 12 |
-| Unity 생명주기 | 9 | 9 |
-| 성능 | 10 | 9 |
-| 안전성 | 9 | 9 |
-| 기능 충족 | 23 | 23 |
-| 적대 검증 | 17 | 17 |
-| 단순성 | 10 | 10 |
-| 완결성 | 10 | 10 |
+**93/100** — 컨벤션 12/12, 생명주기 9/9, 성능 10/10, 안전성 9/9, 기능 충족 23/23, 적대 검증 17/17, 단순성 8/10, 완결성 10/10, 스펙 감사 -5 (상한 94 적용 대상)
 
 ## 피드백
+- Major: 없음
+- [Minor] 스캔라인 실효 강도 ~2.5% (CloneGhost.shader:106 가산항 × alpha 후 블렌딩에서 α 재곱 — α² 이중 감쇠). 명목 8~12% 대비 어두움. 아트 리뷰에서 안 보이면 _ScanlineStrength 상향 또는 보정
+- [Minor] 라이브(Sprite-Lit)/클론(Unlit) 조명 모델 불일치 — 2D 라이트 본격 사용 시 클론만 조명 미수신으로 밝기 단차 가능
+- [Minor] _cloneMaterial null 방어 과잉 (CharacterActor.cs:35-36, 170-177 static 경고 플래그 — 도메인 리로드 비활성 시 세션 간 잔존)
+- [Minor] 점멸 위상이 전역 Time.time 기준 — Recording 진입 시점 따라 최대 0.5초 점이 꺼진 채 시작 가능
+- [Minor] Label이 legacy Text — 기존 UI와 일관되므로 무감점, TMP 전환 시 함께 이관
 
-### Major
-없음.
-
-### Minor
-1. 핫패스 GetComponentInParent — MovingPlatform.cs:159, CrumblingPlatform.cs:131, IdentityPortal.cs:105 (알려진 제약 자가 문서화, 콜라이더→액터 캐시로 개선 가능)
-2. 동일 높이 구간 캐리 의미론 — 발판 top=지면 top 구간에서 탑승자가 지면에 인계됨(실측 무해). "동일 높이 지면을 가로지르며 계속 태우는" 레벨 설계 시 이 경계가 드러남 — 레벨 설계 가이드에 명시 권장
-3. 포탈 텔레포트 속도 보존(의도 설계) — 고속 낙하 중 진입 시 도착지 관통 가능성은 배치 시 유의
-4. 클론 라운드의 붕괴 "완료" 순간 자체는 미실측(트리거 틱 동일성 577=577 + 틱 순수함수로 함의)
+## 스펙 감사
+- 체크리스트 누락 1건(-5): "밝기 미세 지터 적용됨" 항목 부재 (구현 자체는 확인됨 — CloneGhost.shader:96-98, 24Hz 스텝 ±5%)
 
 ## 수정 파일
+- Assets/Art/Shaders/CloneGhost.shader (신규, 115줄)
+- Assets/Art/Materials/CloneGhost.mat (신규, guid c2d5caa5b795aa84d9dbca608ed6199e)
+- Assets/Scripts/UI/RecIndicatorUI.cs (신규, 43줄)
+- Assets/Scripts/Clone/CharacterActor.cs (+31/-0, 199→230줄)
+- Assets/Prefabs/Player/Player.prefab (+3, _cloneMaterial 배선)
+- Assets/Scenes/SampleScene.unity (+244, RecIndicator/Content/Dot/Label 계층)
 
-- 수정: Assets/Scripts/Level/MovingPlatform.cs(+50/-2, 캐리 3단 배제), Assets/Prefabs/Level/Level_1_6.prefab(1줄 — 스위치 x=-7), Assets/Scenes/SampleScene.unity(1줄 — Level_1_7 등록)
-- 신규: Assets/Scripts/Level/{CrumblingPlatform,IdentityPortal}.cs, Assets/Prefabs/Gimmicks/{CrumblingPlatform,IdentityPortal}.prefab, Assets/Prefabs/Level/Level_1_7.prefab
+## 특이사항 (Generator 발견)
+- SRP Batcher 경로에서 SpriteRenderer.color는 vertex color가 아니라 **unity_SpriteColor**(UnityPerDraw)로 전달됨 — `input.color × _Color × unity_SpriteColor` 필요. flipX는 UnityFlipSprite로 반영
+- 스펙의 "_root=RecIndicator 자신 + 같은 GO에 스크립트" 조합은 SetActive(false) 시 Update 정지로 데드락 — Content 래퍼 분리로 회피 (의도적 이탈 1건)
+- 빌트인 폰트는 GetBuiltinExtraResource가 아니라 `Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")`

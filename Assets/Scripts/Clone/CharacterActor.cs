@@ -29,6 +29,14 @@ namespace AfterYou.Clone
         [Tooltip("이 캐릭터의 정체성(무거운형/가벼운형). 이동/점프/접지 마스크/무게가 전부 여기서 온다.")]
         [SerializeField] private IdentityData _identity;
 
+        [Tooltip("클론 모드 전용 머티리얼(스캔라인 고스트). 미할당이면 머티리얼 스왑 없이 동작.")]
+        [SerializeField] private Material _cloneMaterial;
+
+        /// <summary>미할당 경고는 캐릭터/모드 전환마다 반복되므로 프로세스당 1회만 남긴다.</summary>
+        private static bool _hasWarnedMissingCloneMaterial;
+
+        private Material _defaultMaterial;
+
         private Rigidbody2D _rigidbody;
         private Collider2D _collider;
         private PlayerController _playerController;
@@ -66,6 +74,11 @@ namespace AfterYou.Clone
             _recorder = GetComponent<CharacterRecorder>();
             _playback = GetComponent<ClonePlayback>();
             _spriteRenderer = GetComponent<SpriteRenderer>();
+
+            // 라이브/대기로 되돌릴 때 복원할 원본 머티리얼. 아래 _identity == null 조기 return 위에 두어야
+            // 정체성 미할당 프리팹에서도 스왑이 깨지지 않는다.
+            // ⚠ sharedMaterial로만 읽는다. .material은 인스턴스를 복제해 전 클론 공유 계약을 깬다.
+            _defaultMaterial = _spriteRenderer.sharedMaterial;
 
             // 씬에 배치된 초기 위치가 이 캐릭터의 스폰 지점이다.
             _spawnPosition = _rigidbody.position;
@@ -150,6 +163,24 @@ namespace AfterYou.Clone
             Color color = _spriteRenderer.color;
             color.a = mode == CharacterMode.Clone ? CloneAlpha : 1f;
             _spriteRenderer.color = color;
+
+            // 클론만 스캔라인 고스트 머티리얼로 바꾼다. 라이브/대기는 원본 그대로.
+            // ⚠ sharedMaterial로만 쓴다. .material을 쓰면 캐릭터마다 머티리얼 인스턴스가 복제되어
+            //   드로우콜이 늘고 파라미터 일괄 조정이 불가능해진다.
+            if (_cloneMaterial == null)
+            {
+                if (!_hasWarnedMissingCloneMaterial)
+                {
+                    _hasWarnedMissingCloneMaterial = true;
+                    Debug.LogError($"[CharacterActor] {name}: _cloneMaterial 미할당. 클론이 스캔라인 없이 반투명으로만 보인다. Player 프리팹에 Assets/Art/Materials/CloneGhost.mat을 할당할 것.", this);
+                }
+            }
+            else
+            {
+                _spriteRenderer.sharedMaterial = mode == CharacterMode.Clone
+                    ? _cloneMaterial
+                    : _defaultMaterial;
+            }
 
             // 5) 활성화 — 대기는 씬에서 감춘다.
             if (!shouldBeActive)

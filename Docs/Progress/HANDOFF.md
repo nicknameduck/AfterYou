@@ -6,7 +6,8 @@
 
 ## 현재 위치
 
-- **배경 무드 슬라이스 적용 · 미커밋** (2026-07-25, 사용자 플레이테스트 대기) — SampleScene에 테이프 세계 배경: 카메라 `#101318` + Global Volume(Bloom/Vignette/FilmGrain, `Assets/Settings/TapeWorld_VolumeProfile.asset`) + Ground `#2A303B` + Backdrop 실루엣 19개(콜라이더 없음, sortingOrder -100). 레퍼런스 `Assets/Screenshots/tapeworld-mood-final.png`. MCP 도구 함정은 2026-07-25 로그 참조(m_Sprite/색상 객체 형식/volume 서브에셋)
+- **아트 Step 2 클론 스캔라인 셰이더 + REC 오버레이 · 미커밋** (2026-07-25, 하네스 93/100 Major 0, 플레이테스트 대기) — CloneGhost.shader/mat(클론 sharedMaterial 스왑, SetMode 삽입만 +31/-0) + RecIndicatorUI(Recording 중 REC● 1Hz). 잔여 Minor: 스캔라인 실효 ~2.5%로 약함(_ScanlineStrength 상향 여지) / 라이브(Lit)·클론(Unlit) 조명 모델 불일치(2D 라이트 본격 사용 시 단차). 상세 `Docs/harness-logs/harness-last.md`
+- **배경 무드 슬라이스 적용 · 커밋됨** (`354b8bb`, 2026-07-25) — SampleScene에 테이프 세계 배경: 카메라 `#101318` + Global Volume(Bloom/Vignette/FilmGrain, `Assets/Settings/TapeWorld_VolumeProfile.asset`) + Ground `#2A303B` + Backdrop 실루엣 19개(콜라이더 없음, sortingOrder -100). 레퍼런스 `Assets/Screenshots/tapeworld-mood-final.png`. MCP 도구 함정은 2026-07-25 로그 참조(m_Sprite/색상 객체 형식/volume 서브에셋)
 - **아트 디렉션 확정 · 문서화 완료** (2026-07-25, 커밋 `5b18a9b`) — "테이프/방송 세계" 콘셉트, `Docs/team/ART-DIRECTION.md` 신규. 정체성 4색 팔레트 확정(Heavy 인디고/Climber 마젠타 퍼플/Carrier 앰버/Light 민트 시안, 명도 사다리 포함). **에셋 미적용** — Identity_*.asset 4색 반영은 Step 2 잔여(4색+클론 스캔라인 셰이더+REC 오버레이 — Volume은 완료)에 포함
 - **Phase 3-3b 기믹 확장 완료 · 커밋 진행** (하네스 1회차 99/100, Major 0) — 깨지는 발판(CrumblingPlatform) + 정체성 제한 포탈(IdentityPortal, IdentityData[] 허용 리스트) 추가로 **기믹 8종 체제**(압력판/문 + 신규 7종). 캐리 오검출 Major 해소(지지체 3단 판정). Level_1_7 신설(붕괴 다리+FallZone 조합, Heavy 전용 렛지 포탈 게이트). RoundManager/LevelManager 0줄 수정 — 설치형 계약 확장성 실증
 - **Phase 3-3 환경 기믹 5종 완료 · 커밋됨** (`460b769`, 72 → Refine 88/100) — 토글 스위치/시간제한 문/이동 발판/가시/낙하 구멍. IActivatable+ITickGimmick 설치형 구조, Assets/Prefabs/Gimmicks/ + Level_1_6(중첩 프리팹 인스턴스 첫 사례)
@@ -23,7 +24,7 @@
 1. **[사용자 몫] Level_1_4~1_7 플레이테스트** — 기존 대기(박스 밀기+벽타기+벽점프) + 기믹 8종 감각: 문 3초 타이밍, 수정된 캐리감, 깨지는 발판 1.5초(Heavy 이동속도로 다리 횡단 가능한지), 포탈 왕복 조작감, Heavy 렛지 게이트
 2. **클리어 리플레이 연출(§9.3) + undo 스택 리셋** (Phase 3 잔여, 코어 루프 5단계 완성) — 기믹 C# 이벤트 노출(OnPressed/OnOpened/OnLandedOnClone/OnCleared) 포함. 재미 검증 통과로 선행 조건 충족
 3. **천장 이동** (벽타기 확장) — Phase 3 마지막 잔여
-4. **[비차단·임의 시점] 아트 Step 2 잔여** (하네스 1회) — Identity 에셋 4색 적용 + 클론 스캔라인 셰이더 + REC 오버레이 (Global Volume·배경 실루엣은 2026-07-25 완료). 상세는 `Docs/team/ART-DIRECTION.md` §6
+4. **[비차단·임의 시점] 아트 Step 2 잔여** — Identity 에셋 4색 적용만 남음 (`Assets/Data/Identities/Identity_*.asset` 4개 `_tintColor`, ART-DIRECTION.md §2 확정값). 셰이더·REC 오버레이·Volume·실루엣은 2026-07-25 완료
 5. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / 기믹 4곳+`PressurePlate.cs:113` 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / 발판 top=지면 top 동일 높이 구간에선 탑승자가 지면에 인계됨(레벨 설계 시 유의) / 포탈 속도 보존 — 고속 낙하 진입 배치 유의 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만)
 
 ## 유효 제약 (건드리면 깨지는 것들)
