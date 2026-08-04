@@ -24,7 +24,7 @@ namespace AfterYou.Clone
     public class CharacterActor : MonoBehaviour
     {
         /// <summary>클론(과거의 나)의 스프라이트 알파. 라이브와 한눈에 구분되어야 퍼즐이 읽힌다.</summary>
-        private const float CloneAlpha = 0.5f;
+        private const float CloneAlpha = 0.85f;
 
         [Tooltip("이 캐릭터의 정체성(무거운형/가벼운형). 이동/점프/접지 마스크/무게가 전부 여기서 온다.")]
         [SerializeField] private IdentityData _identity;

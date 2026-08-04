@@ -73,6 +73,12 @@ namespace AfterYou.Managers
 
         private int _tick;
         private int _liveIndex = -1;
+        private int _pendingIndex = -1;
+        private int _pendingTypeIndex = -1;
+        private IdentityData[] _identityTypes;
+        private int _cloneBudget;
+        private float _levelStartTime;
+        private float _clearedElapsedSeconds = -1f;
         private RoundState _state = RoundState.Selecting;
 
         /// <summary>LevelManager.Initialize가 끝났는가. false면 입력/틱/재생을 전부 무시한다(레벨 전환 중 안전장치).</summary>
@@ -103,7 +109,36 @@ namespace AfterYou.Managers
         /// <summary>시간 상한을 틱 수로 환산. Fixed Timestep이 바뀌어도 따라가도록 하드코딩하지 않는다.</summary>
         private int MaxTicks => Mathf.CeilToInt(_maxRecordSeconds / Time.fixedDeltaTime);
 
+        /// <summary>녹화 남은 시간(초). Recording 상태가 아니면 0. UI 표시용.</summary>
+        public float RemainingRecordSeconds =>
+            _state == RoundState.Recording ? Mathf.Max(0f, (MaxTicks - _tick) * Time.fixedDeltaTime) : 0f;
+
+        /// <summary>레벨 시작 후 경과 시간(초). 클리어 순간의 값에서 정지한다. HUD "사용한 총 시간" 표시용.</summary>
+        public float ElapsedSeconds
+        {
+            get
+            {
+                if (!_isInitialized) return 0f;
+                if (_state == RoundState.Cleared && _clearedElapsedSeconds >= 0f) return _clearedElapsedSeconds;
+                return Time.time - _levelStartTime;
+            }
+        }
+
         public bool IsSlotConfirmed(int index) => _confirmedSlots.Contains(index);
+
+        /// <summary>Selecting 상태에서 Enter 대기 중인 예비 선택 정체성 종류. 없으면 -1. UI 카드 하이라이트용.</summary>
+        public int PendingTypeIndex => _pendingTypeIndex;
+
+        /// <summary>이 레벨에서 쓸 수 있는 클론 수 상한(예산). 사용량은 ConfirmedCount.</summary>
+        public int CloneBudget => _cloneBudget;
+
+        /// <summary>이 레벨에서 선택 가능한 정체성 종류 수(중복 제거). UI 카드 수.</summary>
+        public int IdentityTypeCount => _identityTypes != null ? _identityTypes.Length : 0;
+
+        /// <summary>정체성 종류. UI가 카드 색을 읽는다. 범위 밖이면 null.</summary>
+        public IdentityData GetIdentityType(int typeIndex) =>
+            _identityTypes != null && typeIndex >= 0 && typeIndex < _identityTypes.Length
+                ? _identityTypes[typeIndex] : null;
 
         public bool IsSlotLive(int index) => _state == RoundState.Recording && index == _liveIndex;
 
@@ -115,12 +150,17 @@ namespace AfterYou.Managers
         /// 순서 엄수: 이전 레벨 잔재(_confirmedSlots 등)를 먼저 비운 뒤에야 originalParents를 기록하고
         /// 스폰을 통일한다. 잔재를 남기면 다음 레벨의 Rewind가 파괴된 Transform으로 SetParent를 시도한다.
         /// </remarks>
-        public void Initialize(CharacterActor[] characters, Transform spawnPoint, PushableBox[] boxes, ITickGimmick[] gimmicks)
+        public void Initialize(CharacterActor[] characters, Transform spawnPoint, PushableBox[] boxes, ITickGimmick[] gimmicks,
+            IdentityData[] identityTypes, int cloneBudget)
         {
             _characters = characters;
             _spawnPoint = spawnPoint;
             _boxes = boxes ?? System.Array.Empty<PushableBox>();
             _gimmicks = gimmicks ?? System.Array.Empty<ITickGimmick>();
+            _identityTypes = identityTypes ?? System.Array.Empty<IdentityData>();
+            _cloneBudget = cloneBudget;
+            _levelStartTime = Time.time;
+            _clearedElapsedSeconds = -1f;
 
             _confirmedSlots.Clear();
             _originalParents.Clear();
@@ -170,6 +210,10 @@ namespace AfterYou.Managers
             _ignoredSpawnPairs.Clear();
             _tick = 0;
             _liveIndex = -1;
+            _pendingIndex = -1;
+            _pendingTypeIndex = -1;
+            _identityTypes = null;
+            _cloneBudget = 0;
             _crushSlot = -1;
             _isDeathPending = false;
             _state = RoundState.Selecting;
@@ -404,9 +448,17 @@ namespace AfterYou.Managers
 
             if (_state == RoundState.Selecting)
             {
-                if (keyboard.digit1Key.wasPressedThisFrame) SelectCharacter(0);
-                else if (keyboard.digit2Key.wasPressedThisFrame) SelectCharacter(1);
-                else if (keyboard.digit3Key.wasPressedThisFrame) SelectCharacter(2);
+                // 예비 선택만 하고, 실제 녹화 시작은 Enter로 분리 — 오선택 즉시 녹화 방지.
+                if (keyboard.digit1Key.wasPressedThisFrame) SetPendingIdentity(0);
+                else if (keyboard.digit2Key.wasPressedThisFrame) SetPendingIdentity(1);
+                else if (keyboard.digit3Key.wasPressedThisFrame) SetPendingIdentity(2);
+                else if (keyboard.digit4Key.wasPressedThisFrame) SetPendingIdentity(3);
+                // 위/아래 방향키로 하이라이트 순환 이동 (좌측 세로 목록 기준: 위 = 이전, 아래 = 다음).
+                else if (keyboard.upArrowKey.wasPressedThisFrame) MovePendingIdentity(-1);
+                else if (keyboard.downArrowKey.wasPressedThisFrame) MovePendingIdentity(1);
+                else if ((keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
+                    && _pendingIndex >= 0)
+                    SelectCharacter(_pendingIndex);
             }
             else if (_state == RoundState.Recording)
             {
@@ -420,13 +472,58 @@ namespace AfterYou.Managers
                 Rewind();
         }
 
-        /// <summary>캐릭터를 골라 새 테이크를 시작한다. UI 버튼과 1/2/3 키가 공유하는 진입점.</summary>
+        /// <summary>
+        /// Selecting 상태에서 정체성 종류를 예비 선택한다. 실제 시작은 Enter → SelectCharacter.
+        /// 같은 종류를 반복 선택할 수 있다 — 매번 그 종류의 미사용 캐릭터 슬롯 하나에 매핑되며,
+        /// 상한은 종류가 아니라 클론 예산(CloneBudget)이다.
+        /// </summary>
+        public void SetPendingIdentity(int typeIndex)
+        {
+            if (!_isInitialized || _state != RoundState.Selecting) return;
+            if (typeIndex < 0 || typeIndex >= IdentityTypeCount) return;
+            if (_confirmedSlots.Count >= _cloneBudget) return;
+
+            int slot = FindFreeSlotOfType(typeIndex);
+            if (slot < 0) return;
+
+            _pendingIndex = slot;
+            _pendingTypeIndex = typeIndex;
+        }
+
+        /// <summary>하이라이트를 direction(±1)만큼 순환 이동한다. 방향키 입력 전용.</summary>
+        private void MovePendingIdentity(int direction)
+        {
+            int count = IdentityTypeCount;
+            if (count <= 0) return;
+
+            // 아직 아무것도 하이라이트되지 않았다면 방향과 무관하게 첫 항목부터 시작한다.
+            int next = _pendingTypeIndex < 0 ? 0 : (_pendingTypeIndex + direction + count) % count;
+            SetPendingIdentity(next);
+        }
+
+        /// <summary>해당 종류의 미사용 캐릭터 슬롯을 찾는다. 종류별로 예산만큼 사전 스폰돼 있어 예산 내에선 항상 존재한다.</summary>
+        private int FindFreeSlotOfType(int typeIndex)
+        {
+            IdentityData type = _identityTypes[typeIndex];
+            for (int i = 0; i < _characters.Length; i++)
+            {
+                if (_characters[i].Identity == type && !IsSlotConfirmed(i))
+                    return i;
+            }
+            return -1;
+        }
+
+        /// <summary>캐릭터를 골라 새 테이크를 시작한다. Enter(예비 선택 확정)와 RestartTake가 공유하는 진입점.</summary>
         public void SelectCharacter(int index)
         {
             if (!_isInitialized) return;
             if (_state != RoundState.Selecting) return;
             if (index < 0 || index >= _characters.Length) return;
             if (IsSlotConfirmed(index)) return;
+            if (_confirmedSlots.Count >= _cloneBudget) return;
+
+            _pendingIndex = -1;
+            _pendingTypeIndex = -1;
 
             // ── 2-패스 강제 ──
             // 1패스에서 전원을 확실히 내린 뒤에야 2패스에서 새 라이브를 올린다.
@@ -579,6 +676,7 @@ namespace AfterYou.Managers
             if (_state == RoundState.Cleared) return;
 
             _state = RoundState.Cleared;
+            _clearedElapsedSeconds = Time.time - _levelStartTime; // "사용한 총 시간"은 클리어 순간에 정지
             Debug.Log($"[RoundManager] LEVEL CLEARED — 사용한 클론 {_confirmedSlots.Count}기");
         }
 
@@ -617,6 +715,8 @@ namespace AfterYou.Managers
         /// <summary>보드를 초기 상태로 되돌리고 선택 대기로 진입한다. 확정 클론은 궤적의 첫 프레임으로 복귀.</summary>
         private void EnterSelecting()
         {
+            _pendingIndex = -1;
+            _pendingTypeIndex = -1;
             RestoreAllSpawnOverlaps();
 
             for (int i = 0; i < _characters.Length; i++)
@@ -647,6 +747,10 @@ namespace AfterYou.Managers
 
             _tick = 0;
             _state = RoundState.Selecting;
+
+            // 첫 항목을 기본 하이라이트한다 — 방향키 이동의 시작점이자 "하이라이트된 걸 Enter로 시작" 흐름 보장.
+            // 예산 소진 시에는 SetPendingIdentity 내부 가드로 하이라이트 없음이 유지된다.
+            SetPendingIdentity(0);
         }
 
         /// <summary>

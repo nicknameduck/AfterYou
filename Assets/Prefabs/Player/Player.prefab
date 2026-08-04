@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 8923997729670501645}
   - component: {fileID: 6243672568183883772}
   - component: {fileID: 7554313409739423599}
+  - component: {fileID: 537682807356182504}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -189,7 +190,7 @@ MonoBehaviour:
   _moveSpeed: 7
   _jumpForce: 14
   _groundCheck: {fileID: 7412787246965241436}
-  _groundCheckSize: {x: 0.5, y: 0.1}
+  _groundCheckSize: {x: 0.9, y: 0.1}
   _groundLayer:
     serializedVersion: 2
     m_Bits: 256
@@ -239,6 +240,24 @@ MonoBehaviour:
   m_EditorClassIdentifier: AfterYou::AfterYou.Clone.CharacterActor
   _identity: {fileID: 0}
   _cloneMaterial: {fileID: 2100000, guid: c2d5caa5b795aa84d9dbca608ed6199e, type: 2}
+--- !u!114 &537682807356182504
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1433645045095823877}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 048e6027507f1714bbb20996a19abbe3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: AfterYou::AfterYou.Player.AfterimageTrail
+  _spawnInterval: 0.06
+  _ghostLifetime: 0.42
+  _startAlpha: 0.75
+  _poolSize: 8
+  _teleportThreshold: 2
+  _minSpawnDistance: 0.08
 --- !u!1 &7008923916374953965
 GameObject:
   m_ObjectHideFlags: 0

@@ -12,8 +12,11 @@ namespace AfterYou.Level
         [Tooltip("에디터/로그 식별용 레벨 이름.")]
         [SerializeField] private string _levelName;
 
-        [Tooltip("이 레벨에 등장할 캐릭터들의 정체성. 배열 길이 = 캐릭터 수(2~4). LevelManager가 인원수만큼 Player를 생성한다.")]
+        [Tooltip("이 레벨에 등장할 캐릭터들의 정체성. 배열 길이 = 클론 예산(2~4). 여기 등록된 정체성은 이 레벨 로드 시 해금되어 이후 레벨에서도 계속 선택지에 나온다.")]
         [SerializeField] private IdentityData[] _identities;
+
+        [Tooltip("이 레벨에서 사용 금지할 정체성(없으면 빈 배열). 해금 풀에 있어도 이 레벨의 선택지에서 제외된다 — 퍼즐 통제용.")]
+        [SerializeField] private IdentityData[] _bannedIdentities;
 
         [Tooltip("전 캐릭터 공유 스폰 지점. 레벨 프리팹의 자식이다.")]
         [SerializeField] private Transform _spawnPoint;
@@ -26,6 +29,7 @@ namespace AfterYou.Level
 
         public string LevelName => _levelName;
         public IdentityData[] Identities => _identities;
+        public IdentityData[] BannedIdentities => _bannedIdentities;
         public Transform SpawnPoint => _spawnPoint;
         public LevelExit LevelExit => _levelExit;
         public PushableBox[] Boxes => _boxes;

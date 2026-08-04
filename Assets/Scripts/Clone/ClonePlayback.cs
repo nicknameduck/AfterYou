@@ -12,8 +12,8 @@ namespace AfterYou.Clone
     [RequireComponent(typeof(Rigidbody2D))]
     public class ClonePlayback : MonoBehaviour
     {
-        /// <summary>클론 기준 알파. CharacterActor.CloneAlpha와 같은 값이어야 한다(반투명 0.5).</summary>
-        private const float CloneAlpha = 0.5f;
+        /// <summary>클론 기준 알파. CharacterActor.CloneAlpha와 같은 값이어야 한다(0.85 — 흰 배경에서는 낮은 알파가 색을 씻어냄).</summary>
+        private const float CloneAlpha = 0.85f;
 
         /// <summary>스폰 지점에서 이만큼 벗어나면 "걸어 나갔다"로 보고 페이드인을 시작한다.</summary>
         private const float RevealDistance = 0.5f;

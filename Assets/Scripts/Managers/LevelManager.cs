@@ -31,6 +31,10 @@ namespace AfterYou.Managers
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
 
+        /// <summary>세션 동안 해금된 정체성 풀(해금 순서 유지 — 카드 순서가 전 레벨에서 일관된다).
+        /// 레벨의 Identities에 등장하면 그 레벨 로드 시 해금되고, 이후 레벨에서도 계속 선택지에 나온다.</summary>
+        private readonly List<IdentityData> _unlockedIdentities = new List<IdentityData>();
+
         private LevelDefinition _currentLevel;
         private int _currentIndex;
 
@@ -66,17 +70,44 @@ namespace AfterYou.Managers
                 ? _currentLevel.SpawnPoint.position
                 : Vector3.zero;
 
+            // 해금: 이 레벨의 Identities를 풀에 추가(중복 제거, 해금 순서 유지).
+            for (int i = 0; i < identities.Length; i++)
+            {
+                if (!_unlockedIdentities.Contains(identities[i]))
+                    _unlockedIdentities.Add(identities[i]);
+            }
+
+            // 사용 가능 종류 = 해금 풀 − 이 레벨의 금지 목록. 클론 예산은 레벨 인원수 그대로.
+            // 같은 종류를 예산 한도 내에서 반복 사용할 수 있어야 하므로,
+            // 종류 × 예산만큼 사전 스폰한다 — 정체성 주입은 Awake에서만 가능해 런타임 재주입이 불가하기 때문.
+            IdentityData[] banned = _currentLevel.BannedIdentities;
+            List<IdentityData> types = new List<IdentityData>();
+            for (int i = 0; i < _unlockedIdentities.Count; i++)
+            {
+                bool isBanned = false;
+                for (int b = 0; banned != null && b < banned.Length; b++)
+                {
+                    if (banned[b] == _unlockedIdentities[i]) { isBanned = true; break; }
+                }
+                if (!isBanned)
+                    types.Add(_unlockedIdentities[i]);
+            }
+            int cloneBudget = identities.Length;
+
             // 4) 비활성 부모 트릭 — 부모를 끈 채로 캐릭터를 생성·정체성 주입한 뒤 한 번에 켠다.
             //    이렇게 해야 CharacterActor.Awake(정체성 적용)가 "주입 완료 후"에 실행된다.
             _charactersParent.gameObject.SetActive(false);
 
-            for (int i = 0; i < identities.Length; i++)
+            for (int t = 0; t < types.Count; t++)
             {
-                GameObject go = Instantiate(_playerPrefab, spawnPos, Quaternion.identity, _charactersParent);
-                go.name = $"Character_{i + 1}";
-                CharacterActor actor = go.GetComponent<CharacterActor>();
-                actor.InjectIdentity(identities[i]);
-                _spawnedActors.Add(actor);
+                for (int b = 0; b < cloneBudget; b++)
+                {
+                    GameObject go = Instantiate(_playerPrefab, spawnPos, Quaternion.identity, _charactersParent);
+                    go.name = $"Character_T{t + 1}_{b + 1}";
+                    CharacterActor actor = go.GetComponent<CharacterActor>();
+                    actor.InjectIdentity(types[t]);
+                    _spawnedActors.Add(actor);
+                }
             }
 
             _charactersParent.gameObject.SetActive(true); // 이 순간 전원의 Awake가 주입된 정체성으로 실행된다.
@@ -94,7 +125,8 @@ namespace AfterYou.Managers
 
             // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
-            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes, gimmicks);
+            _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes, gimmicks,
+                types.ToArray(), cloneBudget);
         }
 
         /// <summary>클리어 상태에서 다음 레벨로 넘어간다. N키와 Next 버튼(CharacterSelectUI)이 공용으로 호출한다.</summary>

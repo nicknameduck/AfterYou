@@ -2,11 +2,27 @@
 
 > 이 파일은 **날짜 로그와 달리 항상 덮어쓴다.** 새 세션은 이 파일 하나로 "지금 어디인지"를 파악하고, 상세 이력은 날짜 파일을 참조한다.
 
-**마지막 갱신**: 2026-07-25
+**마지막 갱신**: 2026-07-29
 
 ## 현재 위치
 
-- **아트 Step 2 클론 스캔라인 셰이더 + REC 오버레이 · 미커밋** (2026-07-25, 하네스 93/100 Major 0, 플레이테스트 대기) — CloneGhost.shader/mat(클론 sharedMaterial 스왑, SetMode 삽입만 +31/-0) + RecIndicatorUI(Recording 중 REC● 1Hz). 잔여 Minor: 스캔라인 실효 ~2.5%로 약함(_ScanlineStrength 상향 여지) / 라이브(Lit)·클론(Unlit) 조명 모델 불일치(2D 라이트 본격 사용 시 단차). 상세 `Docs/harness-logs/harness-last.md`
+- **클론 점선 외곽선 실험 → 전체 폐기** (2026-07-29, 사용자 "안 어울린다") — v1(몸통 위 덧그림)→v2(밴드 컷아웃+어두운 점선)→v3(띄운 프레임+몸통 색 점선, 실척 검증까지 완료) 3차 반복 후 폐기. `CloneGhost.shader`는 git checkout으로 `d5e55fe` 원본(스캔라인+지터만) 복원, 컴파일 0. 실험 스크린샷 `clone-outline-*.png` 5장 보존 — 재검토 시 v3 구조([점선 밴드→투명 갭→몸통] 3단 구획, 모서리 고정 점, 스텝 사각파 점멸)가 최종 도달점이었음
+- **라이브 캐릭터 이동 잔상 · 미커밋** (2026-07-29, 사용자 A안 승인 + 그라데이션 피드백 반영) — `AfterimageTrail.cs` 신규(풀 8장, 간격 0.06s/수명 0.42s(동시 7장)/α0.75 시작·**제곱 감쇠**로 머리 진하고 꼬리 급감, 정체성 틴트 유지 — 4차 튜닝 반영) + Player.prefab 부착. 라이브 모드에서만 스폰, 포탈/되감기 순간이동은 잔상 안 이음(2u/frame 임계), 본체 비활성화 후에도 잔상은 자기 페이드로 정상 소멸. MCP 실측: 이동 중 동시 5장(이론 최대와 일치)/정지 시 0장/콘솔 0. 파라미터는 전부 Inspector 노출 — 체감 튜닝은 플레이테스트 대기
+- **선택 도크 상태 연동 표시/숨김 · 미커밋** (2026-07-28, 사용자 요청) — `CharacterSelectUI.cs` Update()에서 카드 컨테이너를 Selecting에서만 표시, Recording/Cleared에선 숨김(activeSelf 변화 시에만 SetActive). MCP 실측: 녹화 중 도크 영역 픽셀 0, Selecting 복귀 시 재표시 확인
+- **선택 도크 카드 배경 반투명 검정 · 미커밋** (2026-07-28, 사용자 C안 선택) — CardTemplate/Inner `(0,0,0,0.85)` (SampleScene). 흰 카드가 흰 월드에 묻히던 문제 해소, 방송 OSD 오버레이 콘셉트. Normal 테두리(흰 α0.15)는 어두운 안쪽 위에서 회색 림으로 읽힘. MCP 스크린샷 검증 완료(`card-translucent-check.png`)
+- **FilmGrain 임시 OFF + 캐릭터 접지 부양 수정 · 미커밋** (2026-07-28, 사용자 요청) — ① `TapeWorld_VolumeProfile.asset` FilmGrain `active: 0` (값 0.35/0.3 보존 — "일단" 제거라 재활성만 하면 복귀. 이제 노이즈 룩 구성요소 중 활성인 것은 없음: 스캔라인 mat도 강도 0 상태) ② 캐릭터가 바닥 위 0.015유닛(~0.7px) 떠 보이던 문제 = Physics2D `Default Contact Offset 0.01` 때문(Box2D 정지 접촉 이격) → **0.005로 축소**(`ProjectSettings/Physics2DSettings.asset`). MCP 픽셀 실측으로 흰 틈 0px 검증, 콘솔 0. 접촉 물리 전역 영향이므로 플레이테스트에서 박스 밀기/스택 체감 확인 필요
+- **바닥 레벨 프리팹 이관(공통 바닥 폐지) · 미커밋** (2026-07-28, 사용자 결정) — 씬 상주 Ground 삭제, Level_1_1~1_7 각 프리팹에 Ground 자식(top y=-7.71, 40.53×1.68, 검정/Ground 레이어/BoxCollider2D) + **프리팹 내부 좌표 전면 재기준**(전 콘텐츠 y -5.21 시프트, WYSIWYG — `=== LEVEL ===` 오프셋 없음). 새 레벨 배치 기준선 = **바닥 top y=-7.71**(화면 하단 y=-9.4, 카메라 y=2/ortho 11.4 불변). 플레이 모드 전 레벨 순회로 7개 전부 실측 검증. 이제 레벨별 바닥 구멍/높이/폭 디자인 가능
+- **정체성 아이디어 기록: 트램펄린형 · 문서만** (2026-07-28) — GDD §5.2 확장 백로그에 추가(고유 동사 *띄운다* — 머리를 밟은 클론을 높이 튕겨 올리는 능동 발판). 색상은 초록 후보였으나 탈출구와 겹쳐 미정 보류
+- **바닥 화면 하단 부착 + 선택 도크 우측 하단 · 미커밋** (2026-07-28) — ~~상주 바닥 y[-10,-2.5] 연장~~ **바닥 부분은 이후 레벨 프리팹 이관으로 대체됨(위 항목 참조)**. 선택 도크는 우측 하단(앵커 (1,0), -24/24, LowerCenter) 검은 바닥 띠 위에 배치. 하이라이트 테두리는 검은 띠 위라 흰색으로 반전(Highlight 흰 불투명 / Normal alpha 0.15). 스크린샷 `floor-attached-rightdock-check.png`
+- **캐릭터 선택 UI 아이콘 도크 전환 · 미커밋** (2026-07-28) — 하단 카드 바 폐기 → 세로 아이콘 도크(96×96, VerticalLayoutGroup). Selecting 진입 시 첫 항목 자동 하이라이트(pending), ↑↓ 방향키 순환 이동 + 1/2/3·클릭 예비 선택 + Enter 시작. 하이라이트 = 카드 테두리(카드 루트 Image가 테두리, Inner가 안쪽 덮는 구조). Recording/Cleared에선 하이라이트 꺼짐(아이콘은 상시 표시). SelectBar 장식(TopLine/Heading/SideLine)은 비활성화만. MCP 실측 검증 완료
+- **선택 모델 개편: 정체성 종류 카드 + 클론 예산 · 미커밋** (2026-07-27) — 카드 = 종류별 1장(중복 제거), 같은 종류 반복 사용 가능(예산 한도), 사용 시 클론 수 소모. LevelManager가 종류×예산 사전 스폰(Identity 주입 Awake 전용 제약), RoundManager.Initialize 시그니처 확장 + SetPendingIdentity/CloneBudget API. 1/2/3·클릭 = 예비 선택 → **Enter로 녹화 시작**. 상세 2026-07-27.md 8차
+- **종이 룩 폐기 → 노이즈 반전 룩 복원 · 미커밋** (2026-07-28, 사용자 결정) — 종이 실험 4~13차 전부 폐기, 아트만 되돌리고 게임플레이(해금/카드 UI/점프 수정/줌아웃/HUD)는 유지. 복원 직전 전체 스냅샷은 **`experiment/paper-look` 브랜치(`8301a99`)에 백업**. 복원 내용: FullScreenPass 재활성+ScreenScanline.mat, FilmGrain ON(Medium1/0.35/resp 0.3), Vignette 0.28, Identity·기믹·PushableBox 원색 checkout, Player 머티리얼만 원복(_groundCheckSize 0.9 유지), 레벨 지형 9개 검정 재적용, 씬 바닥 검정+PaperBackground 삭제+카드 Inner 플랫화, 종이 에셋·NotoSerif 삭제(잔존 참조 0 검증). 콘솔 에러 0, 레퍼런스 `Assets/Screenshots/noise-look-restored.png`. 상세 2026-07-28.md
+- **종이 시대 산출물 중 유지되는 것** — PaperHudUI.cs(상단 3분할 HUD — 이름만 Paper, 룩 무관), 캔버스 Screen Space Camera, 하단 카드형 선택 바(스킨만 플랫), 카메라 y=2, Pretendard-Bold
+- **모서리 점프 수정 + 남은 시간 UI + TWA급 줌아웃 · 미커밋** (2026-07-27) — 접지 박스 x 0.5→0.9(Player.prefab, 모서리 반걸침 점프 불가 수정 — 1.0 이상은 벽 낙하 중 공중점프 부작용이라 금지), RoundManager.RemainingRecordSeconds + 상단 상태줄 "남은 시간 N.Ns"(녹화 중만), 카메라 ortho 5→8→**11.4**(사용자 "70%로 더 축소" — 캐릭터 = 화면 높이 약 1/23, 본 맵은 이 화면 기준으로 넓게 설계 예정) + 상주 바닥 폭 24→44, CloneAlpha 최종 0.85(사용자 상향 후 동기). **주의**: 배경 실루엣 19종이 씬에서 사라진 상태(사용자 삭제 추정, 확인 대기 — git 복구 가능)
+- **반전 룩(현재 채택): 흰 배경 + 검은 지형 · 미커밋** (2026-07-27) — 카메라 배경 흰색(SampleScene), 씬 상주 바닥 + Level_1_2~1_7 지형 9개 검정(기믹·벽타기 벽 제외, 컴포넌트 이름 기반 제외 판정). 그레인 Medium1/0.35/response 0.3(흰 배경 자글자글 질감), CloneAlpha 0.5→0.65(흰 배경에서 0.5는 색 씻김). **미확정 잔여**: 배경 실루엣이 흰 배경에서 검정 덩어리로 보여 지형과 혼동(연회색으로 밀어내기 필요) / OSD 흰 글자 대비 죽음 / 클론 가산 스캔라인이 흰 배경에서 안 보임 / 채택 시 ART-DIRECTION 환경 팔레트 전면 개편, 폐기 시 git revert
+- **풀스크린 노이즈 A+B 적용 · 미커밋** (2026-07-27, 사용자 승인 후 진행) — ① FilmGrain 0.18→0.38, response 0.8→0.55 (`TapeWorld_VolumeProfile.asset`) ② `ScreenScanline.shader`(신규, 감산·7px·0.035) + `ScreenScanline.mat` + `Renderer2D.asset`에 FullScreenPassRendererFeature 등록(AfterRenderingPostProcessing, fetchColorBuffer ON). 스크린샷 픽셀 분석으로 7px 주기 밴딩 실측 검증 완료, 콘솔 에러 0. 클론 스캔라인(가산·4px·0.1)과 구별 설계
+- **서사 없음 + 캐릭터 디자인 방향 확정 · 문서화 완료** (2026-07-27, 사용자 결정) — GDD §11/§13 + ART-DIRECTION.md 갱신. 스토리/세계관 프레임 폐기(심플 진행형). 캐릭터 = 도형 베이스 + 단일 프레임 + 정적 손그림 외곽선(몸통 색 어두운 톤) + 얼굴 없음. **라인 보일 폐기(노이즈-온리)** — 생명감은 매체 노이즈(그레인/스캔라인/지터), 캐릭터 살은 스쿼시/스트레치 모션
+- **아트 Step 2 클론 스캔라인 셰이더 + REC 오버레이 · 커밋됨** (`d5e55fe`, 2026-07-25, 하네스 93/100 Major 0, 플레이테스트 대기) — CloneGhost.shader/mat(클론 sharedMaterial 스왑, SetMode 삽입만 +31/-0) + RecIndicatorUI(Recording 중 REC● 1Hz). 잔여 Minor: 스캔라인 실효 ~2.5%로 약함(_ScanlineStrength 상향 여지) / 라이브(Lit)·클론(Unlit) 조명 모델 불일치(2D 라이트 본격 사용 시 단차). 상세 `Docs/harness-logs/harness-last.md`
 - **배경 무드 슬라이스 적용 · 커밋됨** (`354b8bb`, 2026-07-25) — SampleScene에 테이프 세계 배경: 카메라 `#101318` + Global Volume(Bloom/Vignette/FilmGrain, `Assets/Settings/TapeWorld_VolumeProfile.asset`) + Ground `#2A303B` + Backdrop 실루엣 19개(콜라이더 없음, sortingOrder -100). 레퍼런스 `Assets/Screenshots/tapeworld-mood-final.png`. MCP 도구 함정은 2026-07-25 로그 참조(m_Sprite/색상 객체 형식/volume 서브에셋)
 - **아트 디렉션 확정 · 문서화 완료** (2026-07-25, 커밋 `5b18a9b`) — "테이프/방송 세계" 콘셉트, `Docs/team/ART-DIRECTION.md` 신규. 정체성 4색 팔레트 확정(Heavy 인디고/Climber 마젠타 퍼플/Carrier 앰버/Light 민트 시안, 명도 사다리 포함). **에셋 미적용** — Identity_*.asset 4색 반영은 Step 2 잔여(4색+클론 스캔라인 셰이더+REC 오버레이 — Volume은 완료)에 포함
 - **Phase 3-3b 기믹 확장 완료 · 커밋 진행** (하네스 1회차 99/100, Major 0) — 깨지는 발판(CrumblingPlatform) + 정체성 제한 포탈(IdentityPortal, IdentityData[] 허용 리스트) 추가로 **기믹 8종 체제**(압력판/문 + 신규 7종). 캐리 오검출 Major 해소(지지체 3단 판정). Level_1_7 신설(붕괴 다리+FallZone 조합, Heavy 전용 렛지 포탈 게이트). RoundManager/LevelManager 0줄 수정 — 설치형 계약 확장성 실증
@@ -43,12 +59,15 @@
 - **기믹 리셋 3경로** — Initialize/EnterSelecting/**RestartTake**(EnterSelecting 우회 경로라 별도 필수). 하나라도 빠지면 토글/타이머/위상이 잔존해 클론 재생 결정성 붕괴
 - **순회 중 상태 전환 금지** — KillZone 사망은 `_isDeathPending` 플래그만, 처리는 DriveGimmicks 완료 후 단일 지점(재생/기록/틱 증가 전 return). 루프 안에서 RestartTake를 즉시 부르면 킬존 배열 위치 따라 1틱 desync
 - **DriveGimmicks 위치 고정** — DriveBoxes 직후·클론 ApplyTick 이전. 뒤로 옮기면 라이브/클론 1틱 어긋남
-- **기믹 검출 마스크 규약** — 스위치류·깨지는 발판 513(라이브+클론 — 클론이 이력을 재현해야 결정성 성립), KillZone·캐리·포탈 1(라이브만). 씬 상주 바닥은 top y=-2.5, x[-12,12] — 레벨 배치는 이 위 기준
+- **기믹 검출 마스크 규약** — 스위치류·깨지는 발판 513(라이브+클론 — 클론이 이력을 재현해야 결정성 성립), KillZone·캐리·포탈 1(라이브만). 바닥은 **레벨 프리팹 소유**(공통 바닥 없음, 2026-07-28 이관) — 기준선 top y=-7.71, 레벨 배치는 이 위 기준
 - **쌍 장치 래치는 행위자가 건다** — 포탈 텔레포트 래치는 출발측이 도착측에 세팅. 도착측 자체 감지에 맡기면 구동 배열 순서에 따라 같은 틱 핑퐁. 래치 해제 질의는 마스크 1(513이면 클론이 영구 래치 유발)
 - **상호작용 트리거는 Default 레이어** — Ground류에 두면 접지 질의(트리거도 잡는 오버로드)가 지면으로 오인 → 무한 점프. disabled 콜라이더 bounds는 무효(0 크기) — 꺼진 상태 질의 스킵
 
 ## 확정 사양 / 폐기한 접근
 
+- **종이 세계 룩 폐기 → 노이즈(반전 룩) 채택** (2026-07-28, 사용자 결정) — 종이 질감 실험 13차까지 진행 후 "다 별로" 판정. 현재 룩 = 흰 배경 + 검은 지형 + FilmGrain(Medium1/0.35/0.3) + 풀스크린 감산 스캔라인(7px/0.035). 종이 실험 전체는 `experiment/paper-look` 브랜치에 보존 — 재검토 시 여기서 복원
+- **서사 프레임 없음** (2026-07-27, 사용자 결정) — 스토리를 넣으면 스코프 비대화 → GDD §11 세계관 컨셉 후보 4종(분열된 자아/시간 메아리/로봇 삼형제/꿈의 조각들) 전부 폐기. "그냥 진행되는 심플 게임". 서사적 살이 필요하면 추가 연출로만
+- **캐릭터 디자인 = 도형 + 정적 손그림 외곽선, 라인 보일 폐기** (2026-07-27, 사용자 결정) — 노이즈-온리: 화면 생명감은 매체 노이즈(그레인/스캔라인/지터), 캐릭터 생명감은 스쿼시/스트레치 모션, 카툰 느낌은 정적 손그림 외곽선(몸통 색 어두운 톤, 순수 검정 금지). 얼굴 요소 없음. Thomas Was Alone은 참고 기준으로만. 라인 보일은 예비 카드(기본 미사용). 상세 ART-DIRECTION.md §캐릭터 디자인 방향
 - **아트 디렉션 = "테이프/방송 세계"** (2026-07-25, 사용자 결정) — 후보 3안(테이프/청사진/손그림 흔들림) 중 A 확정. 베이스는 플랫 도형 유지, 차별화는 셰이더·연출·테마 레이어. 정체성 4색·시각 문법·가독성 상한은 `Docs/team/ART-DIRECTION.md`가 단일 기준. GDD의 "무거운=큰 네모" 임시에셋 항목은 폐기(코드 규칙 "색으로만 구분" 우선)
 - **벽 부착은 Climbable 레이어(10) 전용** (2026-07-18) — Ground 벽 전체를 부착 대상으로 하면 지형이 사다리가 되어 게이트 붕괴(렛지 옆면 파훼). 부착 판정은 `_climbableLayer` 마스크로만. 천장 이동은 미구현(기믹 도입 후 확장)
 - **부착 상태 규약** — 매 틱 재검증(자가 치유) + `Detach()`가 gravityScale 복원 단일 소유(이중 가드 필수, OnDisable에서도 호출). 이 규약을 깨면 "부착 중 확정→되감기→재선택"에서 중력 0 잔존 잠복 버그
