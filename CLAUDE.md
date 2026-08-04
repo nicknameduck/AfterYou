@@ -247,7 +247,7 @@ LLM 코딩 흔한 실수를 줄이기 위한 일반 가이드라인. **이 4원�
 
 ### 투명성
 - Generator에 전달할 **Planner 계획 + Critic 검증 결과** 합본을 사용자에게 먼저 보여준다.
-- 사용자가 AskUserQuestion으로 승인한 후에만 Generator를 실행한다.
+- 합본은 **턴의 마지막 텍스트로 전문을 출력하고 턴을 종료**한다 (도구 호출이 뒤따르면 텍스트가 UI에 표시되지 않음 — 실측 확인). 턴 종료 전 백그라운드 트리거(`Start-Sleep` 3초, background)를 걸어 두고, **완료 알림이 오면 AskUserQuestion만 단독 호출**해 승인받는다 — 사용자 입력 없이 텍스트 → 다이얼로그가 자연스럽게 이어진다. 승인 후에만 Generator를 실행한다.
 
 ### Critic 필수 검증 항목
 - 과거 실패 학습 — `.claude/harness-fail-log.md`에서 같은 실수 패턴 확인

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using AfterYou.Clone;
 using AfterYou.Core;
 using AfterYou.Level;
+using AfterYou.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -27,6 +28,9 @@ namespace AfterYou.Managers
 
         [Tooltip("라운드 진행을 구동할 씬의 RoundManager.")]
         [SerializeField] private RoundManager _roundManager;
+
+        [Tooltip("레벨 전환 페이드 연출. 미할당이면 페이드 없이 즉시 전환한다.")]
+        [SerializeField] private ScreenFader _screenFader;
 
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
@@ -134,7 +138,18 @@ namespace AfterYou.Managers
         {
             if (_roundManager.State != RoundState.Cleared) return;
 
-            LoadLevel((_currentIndex + 1) % _levels.Length);
+            int nextIndex = (_currentIndex + 1) % _levels.Length;
+
+            if (_screenFader != null)
+            {
+                // 페이드 중 재호출은 ScreenFader.IsFading이 가드한다(N키 연타 등).
+                if (_screenFader.IsFading) return;
+                _screenFader.FadeOutThen(() => LoadLevel(nextIndex));
+            }
+            else
+            {
+                LoadLevel(nextIndex);
+            }
         }
 
         private void Update()
