@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using AfterYou.Clone;
 using AfterYou.Core;
+using AfterYou.Ending;
 using AfterYou.Level;
 using AfterYou.UI;
 using UnityEngine;
@@ -32,6 +33,9 @@ namespace AfterYou.Managers
         [Tooltip("레벨 전환 페이드 연출. 미할당이면 페이드 없이 즉시 전환한다.")]
         [SerializeField] private ScreenFader _screenFader;
 
+        [Tooltip("마지막 레벨 클리어 후 재생할 엔딩 연출(씬 상주).")]
+        [SerializeField] private EndingSequence _endingSequence;
+
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
 
@@ -42,13 +46,16 @@ namespace AfterYou.Managers
         private LevelDefinition _currentLevel;
         private int _currentIndex;
 
+        /// <summary>엔딩 연출 진행 중 여부. 이 동안에는 라운드가 없고 Enter/N이 "처음부터 다시"로 동작한다.</summary>
+        private bool _isEnding;
+
         private void Start()
         {
             LoadLevel(0);
         }
 
-        /// <summary>레벨을 교체한다. 이전 레벨/캐릭터를 정리하고 새 레벨을 로드해 라운드를 구동한다.</summary>
-        public void LoadLevel(int index)
+        /// <summary>진행 중인 라운드와 현재 레벨/캐릭터를 모두 정리한다. 레벨 교체와 엔딩 진입이 공유한다.</summary>
+        private void CleanupCurrentLevel()
         {
             // 1) 진행 중인 라운드를 안전하게 종료한다. 참조(_characters)를 비우기 전에 RoundManager부터 정리해야
             //    전환 순간 LevelExit이 LiveCharacter를 읽어도 NRE가 나지 않는다.
@@ -64,6 +71,14 @@ namespace AfterYou.Managers
 
             if (_currentLevel != null)
                 Destroy(_currentLevel.gameObject);
+            // 엔딩처럼 새 레벨을 로드하지 않는 경로도 있으므로, 파괴된 참조를 여기서 끊는다.
+            _currentLevel = null;
+        }
+
+        /// <summary>레벨을 교체한다. 이전 레벨/캐릭터를 정리하고 새 레벨을 로드해 라운드를 구동한다.</summary>
+        public void LoadLevel(int index)
+        {
+            CleanupCurrentLevel();
 
             // 3) 새 레벨 프리팹 인스턴스화.
             _currentIndex = index;
@@ -138,17 +153,65 @@ namespace AfterYou.Managers
         {
             if (_roundManager.State != RoundState.Cleared) return;
 
+            // 마지막 레벨을 클리어하면 처음으로 순환하지 않고 엔딩 연출로 넘어간다.
+            bool isLastLevel = _currentIndex == _levels.Length - 1;
             int nextIndex = (_currentIndex + 1) % _levels.Length;
 
             if (_screenFader != null)
             {
                 // 페이드 중 재호출은 ScreenFader.IsFading이 가드한다(N키 연타 등).
                 if (_screenFader.IsFading) return;
-                _screenFader.FadeOutThen(() => LoadLevel(nextIndex));
+                if (isLastLevel)
+                    _screenFader.FadeOutThen(() => StartEnding());
+                else
+                    _screenFader.FadeOutThen(() => LoadLevel(nextIndex));
             }
             else
             {
-                LoadLevel(nextIndex);
+                // ⚠ 페이더 미할당 폴백: 전환이 같은 프레임 안에서 끝나므로 이 프레임의 Enter 입력이
+                //   엔딩 재시작 입력으로 새어 들어갈 위험이 있다(동일 프레임 Enter 누수 위험).
+                if (isLastLevel)
+                    StartEnding();
+                else
+                    LoadLevel(nextIndex);
+            }
+        }
+
+        /// <summary>
+        /// 엔딩 연출로 진입한다. 무대를 완전히 비운 뒤 EndingSequence에 넘긴다 —
+        /// 정리를 먼저 하지 않으면 마지막 레벨 지형·캐릭터가 엔딩 배경 위에 남는다.
+        /// </summary>
+        private void StartEnding()
+        {
+            CleanupCurrentLevel();
+            _isEnding = true;
+            _endingSequence.Begin(_unlockedIdentities.ToArray(), _levelParent);
+        }
+
+        /// <summary>엔딩에서 첫 레벨로 재시작한다. 해금 풀까지 비워 완전한 새 세션으로 되돌린다.</summary>
+        private void RestartFromEnding()
+        {
+            if (_screenFader != null)
+            {
+                if (_screenFader.IsFading) return;
+                // 순서 고정: Stop → _isEnding 해제 → 해금 풀 비우기 → LoadLevel(0).
+                // Stop이 반드시 먼저여야 엔딩 봇/무대가 걷힌 뒤에 새 레벨이 올라간다.
+                _screenFader.FadeOutThen(() =>
+                {
+                    _endingSequence.Stop();
+                    _isEnding = false;
+                    _unlockedIdentities.Clear();
+                    LoadLevel(0);
+                });
+            }
+            else
+            {
+                // ⚠ 페이더 미할당 폴백: 같은 프레임에 재시작이 끝나므로 이 프레임의 Enter 입력이
+                //   새 레벨의 입력으로 새어 들어갈 위험이 있다(동일 프레임 Enter 누수 위험).
+                _endingSequence.Stop();
+                _isEnding = false;
+                _unlockedIdentities.Clear();
+                LoadLevel(0);
             }
         }
 
@@ -161,16 +224,29 @@ namespace AfterYou.Managers
             {
                 if (debugKeyboard.pageDownKey.wasPressedThisFrame)
                 {
+                    // 엔딩 중 강제 이동이면 엔딩 무대를 먼저 걷어낸다 — 안 그러면 봇/배경이 새 레벨 위에 남는다.
+                    if (_isEnding) { _endingSequence.Stop(); _isEnding = false; }
                     LoadLevel((_currentIndex + 1) % _levels.Length);
                     return;
                 }
                 if (debugKeyboard.pageUpKey.wasPressedThisFrame)
                 {
+                    if (_isEnding) { _endingSequence.Stop(); _isEnding = false; }
                     LoadLevel((_currentIndex - 1 + _levels.Length) % _levels.Length);
                     return;
                 }
             }
 #endif
+
+            // 엔딩 중에는 라운드가 Teardown된 상태라 Cleared 가드에 걸리므로, 그보다 먼저 처리한다.
+            if (_isEnding)
+            {
+                Keyboard endingKeyboard = Keyboard.current;
+                if (endingKeyboard != null && (endingKeyboard.nKey.wasPressedThisFrame
+                    || endingKeyboard.enterKey.wasPressedThisFrame || endingKeyboard.numpadEnterKey.wasPressedThisFrame))
+                    RestartFromEnding();
+                return;
+            }
 
             if (_roundManager.State != RoundState.Cleared) return;
 

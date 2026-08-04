@@ -1,41 +1,59 @@
-# 하네스 최신 결과 (2026-08-04) — 점프대(JumpPad) 기믹
+# 하네스 최신 결과 (2026-08-05) — 엔딩 연출 (ALL CLEAR + 정체성 봇 + 잔상)
 
 ## 스펙
-점프대 기믹 추가 — 밟으면 캐릭터를 수직으로 발사하는 발판. 기존 설치형 기믹 시스템(IActivatable/ITickGimmick, Assets/Prefabs/Gimmicks/)에 맞춰 레벨 프리팹에 배치만으로 동작. 정체성 Weight 기반 반발력 차등(IdentityData 무게 값에 따라 발사 높이 차등, 배율은 점프대 인스펙터에서 조정 가능). 클론 재생 재현성 유지: 틱 기반 판정, 재시작 시 동일 위상 재현. 동작 조건: 1) 밟으면 위로 발사된다 2) 가벼운/무거운 정체성의 발사 높이가 다르다 3) 클론이 밟아도 라이브와 동일하게 동작한다 4) 재도전 시 항상 같은 결과가 재현된다 5) 기존 기믹 레벨 회귀 없음
+
+엔딩 연출 구현 — 마지막 레벨 클리어 시 첫 레벨 순환 대신 엔딩 진입. 포트폴리오 영상용 간단 엔딩: ① 위에서 아래로 내려오는 ALL CLEAR 텍스트 ② 지금까지 사용 가능한 도형 캐릭터들이 왔다갔다 점프도 하며 자유자재로 신나게 뛰어다니는 간이 AI ③ 잔상 동반.
+
+- EndingBot.cs 신규 — 좌우 랜덤 워크 + 랜덤 점프, 벽/가장자리 방향 전환, Rigidbody2D 물리, 정체성 틴트 + 정체성별 점프력 차등
+- EndingSequence.cs 신규 — ALL CLEAR 하강 SmoothStep, 해금 정체성 종류별 봇 1마리, Enter/N 첫 레벨 재시작
+- Level_Ending.prefab 신규 — 바닥 top y=-7.71 + 좌우 벽
+- LevelManager.cs 수정 — 마지막 레벨 클리어 시 엔딩 분기, ScreenFader 페이드 경유, _unlockedIdentities 전달
+- AfterimageTrail.cs 소폭 수정 — CharacterActor 의존 완화(봇 재사용), 라이브 동작 불변
+- CharacterSelectUI.cs 소폭 수정 — SetSuppressed(엔딩 중 State=Selecting 잔존으로 도크 재표시되는 문제 봉인)
+- SampleScene — Canvas 하위 AllClearLabel(legacy Text, Pretendard-Bold, 검정) + EndingSequence + 참조 연결
+- 제약: RoundManager 0줄 수정 / 클론 시스템 규약 불변 / 기존 레벨 프리팹 무수정 — 전부 준수 확인
 
 ## 동작 조건 (평가 결과)
-- [✓] JumpPad.cs가 ITickGimmick 구현, 자체 Update/FixedUpdate 없음 (JumpPad.cs:22/87/94, DriveGimmicks 경유만)
-- [✓] 라이브가 밟으면(발바닥 tolerance && vy≤ε) 그 틱에 `linearVelocity.y = launchSpeed` 발사 (JumpPad.cs:108~135, 스폰 틱 발사 실측 Δy=0.348 정합)
-- [✓] 발사 속도 = max(min, base − (Weight−1)×penalty) — 정점 실측 Light −1.474 / Heavy −4.925, 차등 3.45유닛 (JumpPad.cs:146)
-- [✓] base/penalty/min 인스펙터 노출 (JumpPad.cs:43/46/49 + prefab 직렬화 확인)
-- [✓] 클론(레이어 9, Kinematic)은 발사 질의 대상 아님(마스크 1) — 재생 중 clonePos vs frames[tick] 거리 0.000000 실측
-- [✓] 재시작 결정성 — 발사 위상 한중간 RestartTake 인터럽트 후 재기록 첫 120프레임 비트 단위 동일 실측 (ResetGimmick 3경로 자동 커버)
-- [✓] JumpPad.prefab: Ground(8) + 비트리거 BoxCollider2D — 트램펄린 반복 바운스(착지→재발사) 실측
-- [✓] Level_1_8에 중첩 프리팹 인스턴스 설치(m_SourcePrefab guid 일치), LevelManager 자동 수집 — 매니저 코드 0줄
-- [✓] 게이트 절대좌표 실측: 패드 top −7.41 / 렛지 top −3.41. Light 점프 −4.08 미달, Light 발사 −1.97 도달(여유 1.44), Heavy 발사 −5.43 미달(부족 2.0)
-- [✓] 기존 회귀 0 — 1_1~1_7 프리팹·매니저 4파일 diff 0, 1_6/1_7 라이브 라운드 구동 콘솔 0
-- [✓] 컴파일 에러/워닝 0 (read_console 3회)
+
+- [✓] 마지막 레벨(Level_1_8, _levels 8개) 클리어 후 N/Enter/Next → 페이드 경유 엔딩 진입 (LevelManager.cs:157, :164-165)
+- [✓] ALL CLEAR 화면 위 밖→하강 안착 (EndingSequence.cs:174 SmoothStep, 실측 y +199.98→-300.00)
+- [✓] 해금 종류별 봇 스폰 4기, 색=TintColor, 점프력=JumpForce 차등 (실측 jump 10/10/12/14, 색 4종 상이)
+- [✓] 좌우 이동 + 간헐 점프 + 벽 반전, 이탈 없음 (벽 top -1.0 vs 점프 최고 상단 -3.38, 18초 실측 |x|<20.3)
+- [✓] 잔상 트레일 CharacterActor 없이 동작 (실측 *_Afterimages 4개, 활성 고스트 27장, NRE 0)
+- [✓] 엔딩 중 카드 도크·PaperHUD·REC·Next 미표시 (SetSuppressed + activeSelf 스냅숏 숨김)
+- [✓] Enter/N → Stop→해금 풀 Clear→LoadLevel(0), 2회차 엔딩 정상 (라벨 y=200 복원 실측)
+- [✓] PageDown/PageUp 디버그 이탈 시 엔딩 잔재 0 (LevelManager.cs:228, :234 — Stop 선행)
+- [✓] 엔딩 중 RoundManager 휴면 (_isInitialized=False 실측, Enter 녹화 미트리거)
+- [✓] 기존 레벨 전환·라이브 잔상 불변 (재시작 후 _isInitialized=True 실측)
+- [✓] 컴파일 에러/워닝 0
 
 ## 참조 패턴
-- [시스템조립] #5 설치형 틱 기믹 시스템 — 인터페이스 계약 + 자동 수집 드롭인, 리셋 3경로 자동 커버, 중첩 프리팹 설치, 지오메트리 실측 선행, 도달고 산술 게이트
-- [데이터주도설계] #2 정체성+압력판 — Weight 순수 데이터, ContactFilter2D 3중 필터 + 재사용 List 할당 0
+
+- [카테고리: 시스템조립] #3 레벨=프리팹 교체 + 런타임 주입 — 소유 리스트 파괴 / SerializeField 배선 / 정리 순서 고정. #5 리셋 경로 전수 조사(엔딩 이탈 3경로 전부 Stop 경유), #6 토글러 데드락 회피(EndingSequence 자기 SetActive 금지)도 반영
 
 ## 점수
-**97/100** — 컨벤션 12/12 · 생명주기 9/9 · 성능 9/10 · 안전성 9/9 · 기능 충족 23/23 · 적대 검증 17/17 · 단순성 8/10 · 완결성 10/10
-적대 시나리오 4종(공중 인터럽트 재현성 / 클론 재생 오염 / 측면 접촉 오발사 / 기존 레벨 회귀) 전부 실측 통과, Major 0.
+
+**98/100** (1회차) — 컨벤션 12/12, 생명주기 9/9, 성능 10/10, 안전성 9/9, 기능 충족 23/23, 스모크 실측 17/17, 단순성 8/10, 완결성 10/10. Major 0.
 
 ## 피드백
-### Major
-- 없음
 
-### Minor
-- JumpPad.cs:51~61, 149~167 — 플래시 시각 서브시스템은 스펙 미요청(단순성 −2). 기존 기믹 시각 피드백 관례와는 일치
-- JumpPad.cs:118 — 점유 지속 중 매 틱 GetComponentInParent (성능 −1, PressurePlate와 동일 관례 — Phase 5 핫패스 일괄 정리 대상에 합류)
-- JumpPad.cs:125 — 지역변수명 `rigidbody`가 obsolete 프로퍼티를 가림 (동작 무해)
-- 트램펄린 사양: 패드 위 대기 불가(매 착지 재발사) — 향후 "패드 위에서 대기"가 필요한 레벨 설계와 충돌하는 설계 제약으로 인지
+- [Minor] EndingSequence.cs:148 — `_hiddenPreviousStates` null/길이 방어는 도달 불가능 분기 (단순성 -2)
+- [Minor] LevelManager.cs:225-231 — 엔딩 진입 페이드 진행 중(sub-second) PageDown 시 레이스 (디버그 전용 창, 기존 전환에도 동일 구조, Enter/PageDown으로 즉시 복구)
+- [Minor] EndingBot.cs:78-80 — "Awake 순서 미보장" 주석은 사실과 다름(활성 프리팹 Instantiate는 반환 전 Awake 실행). Init의 GetComponent<SpriteRenderer>()는 캐시 재사용 가능
+- [Minor] EndingSequence.cs:92-94 — bot.name 지정이 Instantiate 이후라 잔상 루트 이름이 `EndingBot(Clone)_Afterimages`로 남음 (기능 무영향)
 
 ## 수정 파일
-- Assets/Scripts/Level/JumpPad.cs (신규)
-- Assets/Prefabs/Gimmicks/JumpPad.prefab (신규)
-- Assets/Prefabs/Level/Level_1_8.prefab (신규)
-- Assets/Scenes/SampleScene.unity (+1/−0, _levels 등록)
+
+- Assets/Scripts/Managers/LevelManager.cs (185→261줄)
+- Assets/Scripts/Player/AfterimageTrail.cs (165→166줄, 2곳)
+- Assets/Scripts/UI/CharacterSelectUI.cs (139→151줄, 2곳)
+- Assets/Scenes/SampleScene.unity (+137/-0)
+- Assets/Scripts/Ending/EndingBot.cs (신규)
+- Assets/Scripts/Ending/EndingSequence.cs (신규)
+- Assets/Prefabs/Ending/EndingBot.prefab (신규)
+- Assets/Prefabs/Ending/Level_Ending.prefab (신규)
+
+## 비고
+
+- Generator 의도적 편차 1건 수용: `_hideDuringEnding` 복원을 "전부 SetActive(true)"가 아닌 Begin 시점 activeSelf 스냅숏 복원으로 — StatusText가 씬에서 원래 비활성이라 무조건 복원이 회귀가 되는 것을 방지
+- 경량화 체계(스모크 실측 1회 + 독립 Critic) 첫 시스템급 적용 회차

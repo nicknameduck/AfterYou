@@ -6,6 +6,7 @@
 
 ## 현재 위치
 
+- **엔딩 연출(ALL CLEAR + 정체성 봇 + 잔상) · 커밋 진행** (2026-08-05, 하네스 98/100 Major 0, 1회차 통과 — 경량화 체계 첫 시스템급 적용) — 마지막 레벨(Level_1_8) 클리어 후 첫 레벨 순환 대신 엔딩 진입(페이드 경유). `EndingBot.cs`(간이 AI — 정체성별 틴트/이동속도/점프력 차등 주입, 수평만 덮어쓰기 y 보존, 접지 시 랜덤 점프, 벽 레이캐스트 반전) + `EndingSequence.cs`(ALL CLEAR 하강 SmoothStep +200→-300, 해금 종류별 봇 1기, UI 숨김 activeSelf 스냅숏 복원, Stop 소유 리스트 역순 정리) + `EndingBot.prefab`/`Level_Ending.prefab`(바닥 top -7.71 + 벽 top -1.0 — jump 14 도달 상단 -3.38 차단) + LevelManager 엔딩 분기(CleanupCurrentLevel 추출, 엔딩 중 Enter/N → Stop→해금 풀 Clear→LoadLevel(0) 재시작) + AfterimageTrail CharacterActor 의존 완화(봇 잔상 재사용) + CharacterSelectUI.SetSuppressed(엔딩 중 State=Selecting 잔존 도크 봉인). **RoundManager 0줄 수정** — Teardown 휴면 가드(_isInitialized) 위에 올린 라운드 밖 오버레이 모드(성공 패턴 #7 신규). 스모크 실측: 봇 4기 차등/라벨 하강/이탈 0/잔상 27장/재시작 잔재 0/콘솔 0. 잔여 Minor 4(도달 불가 방어 분기, 디버그 키 페이드 레이스, 주석 오류, 잔상 루트 이름 — 전부 기능 무영향). 엔딩 체감(봇 신남 정도·타이밍)은 플레이테스트 대기, 파라미터 전부 Inspector 노출
 - **점프대(JumpPad) 기믹 · 커밋됨(`a14fd51`)** (2026-08-04, 하네스 97/100 Major 0, 1회차 통과) — 기믹 9종 체제. `JumpPad.cs` 신규(ITickGimmick, 마스크 1 라이브 전용 — 클론은 기록 궤적이 발사를 재현, vy≤ε 게이트로 무상태 발사, Weight 선형 감쇠 base 18/penalty 0.8/min 5 인스펙터 조정 가능 → 발사고 Light 5.50/Climber 5.03/Carrier 4.57/Heavy 1.98) + `JumpPad.prefab`(Ground 레이어, 비트리거) + `Level_1_8.prefab`(검증 레벨: 렛지 = 패드 +4.0 → Light만 발사로 도달, 점프·Heavy 불가 — 양방향 절대좌표 실측) + 씬 `_levels` 등록(+1줄). 매니저 4파일 0줄 수정(설치형 계약 3번째 실증). 적대 실측 4종 통과(공중 인터럽트 결정성/클론 재현 0.000000/측면 오발사 0/1_6·1_7 회귀 0). 잔여 Minor: 핫패스 GetComponentInParent(Phase 5 합류)/트램펄린 사양(패드 위 대기 불가 — 레벨 설계 제약). 플레이테스트 대기. 스냅샷 커밋 `14c40c6`
 - **레벨 전환 페이드아웃/인 · 커밋됨(`14c40c6`)** (2026-08-04) — `ScreenFader.cs` 신규(풀스크린 오버레이, 아웃 0.3s→레벨 교체→인 0.3s, SmoothStep 이징 — "순간 멈춤" 피드백 대응, 시간 연장은 사용자가 보류, Inspector 튜닝 가능). 색상은 검정→**흰색 전환**(2026-08-04, 흰 배경에 녹아드는 연출 시도 중 — 코드는 알파만 제어, 색은 씬 FadeOverlay Image 소유) + `LevelManager.LoadNextLevel()` 페이드 경유(미할당 시 즉시 전환 폴백, `IsFading` 재진입 가드, 페이드 중 오버레이가 클릭 흡수). SampleScene Canvas 최상단 `FadeOverlay`(알파 0, raycastTarget OFF) + 참조 연결. 디버그 PageDown/PageUp은 즉시 전환 유지. MCP 실측: 중간 스크린샷 어두워짐 + 종료 후 alpha 0 복귀 + 콘솔 0. 클리어→Next 실제 흐름 체감은 플레이테스트 대기
 - **클론 점선 외곽선 실험 → 전체 폐기** (2026-07-29, 사용자 "안 어울린다") — v1(몸통 위 덧그림)→v2(밴드 컷아웃+어두운 점선)→v3(띄운 프레임+몸통 색 점선, 실척 검증까지 완료) 3차 반복 후 폐기. `CloneGhost.shader`는 git checkout으로 `d5e55fe` 원본(스캔라인+지터만) 복원, 컴파일 0. 실험 스크린샷 `clone-outline-*.png` 5장 보존 — 재검토 시 v3 구조([점선 밴드→투명 갭→몸통] 3단 구획, 모서리 고정 점, 스텝 사각파 점멸)가 최종 도달점이었음
@@ -39,11 +40,12 @@
 
 ## 다음 작업 (우선순위 + 차단 관계)
 
-1. **[사용자 몫] Level_1_4~1_8 플레이테스트** — 기존 대기(박스 밀기+벽타기+벽점프) + 기믹 감각: 문 3초 타이밍, 수정된 캐리감, 깨지는 발판 1.5초(Heavy 이동속도로 다리 횡단 가능한지), 포탈 왕복 조작감, Heavy 렛지 게이트, **점프대 발사감(Light/Heavy 차등 체감, 인스펙터 base 18/penalty 0.8/min 5 튜닝 여지)** + 레벨 전환 페이드 체감(흰색 0.3s)
-2. **클리어 리플레이 연출(§9.3) + undo 스택 리셋** (Phase 3 잔여, 코어 루프 5단계 완성) — 기믹 C# 이벤트 노출(OnPressed/OnOpened/OnLandedOnClone/OnCleared) 포함. 재미 검증 통과로 선행 조건 충족
-3. **천장 이동** (벽타기 확장) — Phase 3 마지막 잔여
-4. **[비차단·임의 시점] 아트 Step 2 잔여** — Identity 에셋 4색 적용만 남음 (`Assets/Data/Identities/Identity_*.asset` 4개 `_tintColor`, ART-DIRECTION.md §2 확정값). 셰이더·REC 오버레이·Volume·실루엣은 2026-07-25 완료
-5. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / 기믹 4곳+`PressurePlate.cs:113` 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / 발판 top=지면 top 동일 높이 구간에선 탑승자가 지면에 인계됨(레벨 설계 시 유의) / 포탈 속도 보존 — 고속 낙하 진입 배치 유의 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만)
+1. **[사용자 몫] 엔딩 플레이테스트 + 포트폴리오 영상 촬영** — 마지막 레벨 클리어 → 엔딩 체감(봇 점프 빈도/속도/방향 전환 리듬, ALL CLEAR 하강 1.2s, 잔상 밀도 — 전부 Inspector 튜닝 가능). 엔딩에서 Enter/N으로 처음부터 재시작(해금 풀 리셋) 가능해 촬영 반복 용이
+2. **[사용자 몫] Level_1_4~1_8 플레이테스트** — 기존 대기(박스 밀기+벽타기+벽점프) + 기믹 감각: 문 3초 타이밍, 수정된 캐리감, 깨지는 발판 1.5초(Heavy 이동속도로 다리 횡단 가능한지), 포탈 왕복 조작감, Heavy 렛지 게이트, **점프대 발사감(Light/Heavy 차등 체감, 인스펙터 base 18/penalty 0.8/min 5 튜닝 여지)** + 레벨 전환 페이드 체감(흰색 0.3s)
+3. **클리어 리플레이 연출(§9.3) + undo 스택 리셋** (Phase 3 잔여, 코어 루프 5단계 완성) — 기믹 C# 이벤트 노출(OnPressed/OnOpened/OnLandedOnClone/OnCleared) 포함. 재미 검증 통과로 선행 조건 충족
+4. **천장 이동** (벽타기 확장) — Phase 3 마지막 잔여
+5. **[비차단·임의 시점] 아트 Step 2 잔여** — Identity 에셋 4색 적용만 남음 (`Assets/Data/Identities/Identity_*.asset` 4개 `_tintColor`, ART-DIRECTION.md §2 확정값). 셰이더·REC 오버레이·Volume·실루엣은 2026-07-25 완료
+6. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / 기믹 4곳+`PressurePlate.cs:113` 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / 발판 top=지면 top 동일 높이 구간에선 탑승자가 지면에 인계됨(레벨 설계 시 유의) / 포탈 속도 보존 — 고속 낙하 진입 배치 유의 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만)
 
 ## 유효 제약 (건드리면 깨지는 것들)
 

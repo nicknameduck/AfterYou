@@ -1,54 +1,68 @@
-# 최종 통합 계획 (Generator 입력본)
+# 최종 통합 계획 (Generator 입력본) — 엔딩 연출 (ALL CLEAR + 정체성 봇 + 잔상)
 
-> 2026-08-04 — 점프대(JumpPad) 기믹 하네스. 스냅샷 커밋: `14c40c6`
+> 2026-08-05. 스냅샷 커밋 `cb0e9b4`. 워크트리 OFF (씬/프리팹 수정 포함).
 
 ## 수정 대상
-1. Assets/Scenes/SampleScene.unity (3226줄, MCP 프로퍼티 세팅만) — LevelManager `_levels` 배열(2793~2800줄)에 Level_1_8 1줄 append. 완료 후 git diff로 +1줄 외 변경 0 검증 필수 (씬에 미커밋 작업물 없음 — 스냅샷 커밋 완료 상태)
-2. (코드 수정 없음 — RoundManager(815줄)/LevelManager(185줄)/PlayerController(264줄)/CharacterActor(230줄) 전부 diff 0 유지 대상. 설치형 계약이 신규 기믹을 자동 흡수)
+
+1. `Assets/Scripts/Managers/LevelManager.cs` (185줄, **Edit 전용**) — 수정 범위: 필드 추가 30~43 부근 / LoadLevel 53~66 (정리 로직을 `CleanupCurrentLevel()`로 추출 — **라인 이동만, 본문 바이트 동일** + `_currentLevel = null` 한 줄 추가) / LoadNextLevel 137~153 (마지막 레벨이면 순환 대신 페이드 경유 엔딩 진입) / Update 155~183 (엔딩 입력 + 디버그 키 엔딩 정리 분기). LoadLevel의 3)~6) 단계(비활성 부모 트릭 포함)는 **무변경 — git diff로 증명**.
+2. `Assets/Scripts/Player/AfterimageTrail.cs` (165줄, **Edit 전용**) — 수정 2곳 한정: 9줄 `RequireComponent`에서 **CharacterActor만 제거(SpriteRenderer 유지)** / 69줄 라이브 판정을 `if (_actor != null && _actor.Mode != CharacterMode.Live)` 가드로 완화 (actor 없으면 항상 잔상 활성). AfterimageGhost·SpawnGhost·풀 로직 0줄. `_ghostRoot` 정리는 기존 OnDestroy가 봇 파괴 시에도 커버 — 추가 코드 불필요.
+3. `Assets/Scripts/UI/CharacterSelectUI.cs` (139줄, **Edit 전용**) — `_suppressed` 필드 + `SetSuppressed(bool)` 공개 메서드 추가, 62줄 한 줄 병합만: `bool canSelect = !_suppressed && _roundManager.State == RoundState.Selecting;`. RebuildCards(100~137) 0줄. 배경: 엔딩 중 RoundManager.State가 Selecting으로 남아(Teardown이 리셋, RoundManager.cs:219) 카드 도크가 재표시되는 문제 실측 확인.
 
 ## 신규 파일
-1. Assets/Scripts/Level/JumpPad.cs — ITickGimmick 구현. 자체 Update/FixedUpdate 없음, DriveGimmickTick 구동. 검출부는 CrumblingPlatform.IsOccupied(116~140줄) 패턴 복제하되 **마스크 1(라이브 Default 전용)**: 상면 위 얇은 OverlapBox(ContactFilter2D useTriggers=false, 재사용 List) → GetComponentInParent&lt;CharacterActor&gt; → 발바닥 `bounds.min.y ≥ top − _standTolerance` && `vy ≤ ε`(하강/정지)이면 발사. vy 읽기는 `other.attachedRigidbody`(핫패스 GetComponent 금지). 발사 = `rb.linearVelocity = new Vector2(rb.linearVelocity.x, launchSpeed)` (y만 세팅). `launchSpeed = Mathf.Max(_minLaunchSpeed, _baseLaunchSpeed − (Weight−1) × _weightPenaltyPerUnit)`, Identity null 폴백 weight 1. 발사 시 스프라이트 플래시(틱 카운트다운, `Mathf.CeilToInt(초/fixedDeltaTime)` 환산, Time.time 금지). ResetGimmick = 플래시/색 복원.
-2. Assets/Prefabs/Gimmicks/JumpPad.prefab — Ground 레이어(8), 비트리거 BoxCollider2D(접지 마스크 3840에 걸려 착지 가능), SpriteRenderer, JumpPad.cs 부착. CrumblingPlatform.prefab 구조 참고. 검출용 별도 트리거 콜라이더 추가 금지(OverlapBox 질의만).
-3. Assets/Prefabs/Level/Level_1_8.prefab — 검증용 최소 레벨. Ground는 Level_1_7 패턴 복제(y=-8.55, 스케일 40.53×1.68, 레이어 8 → top −7.71). LevelDefinition 6필드 전부 채움: `_levelName`/`_identities`(Light+Heavy — 차등 검증용)/`_bannedIdentities`/`_spawnPoint`/`_levelExit`/`_boxes`(빈 배열 허용 — Initialize null 안전). JumpPad는 **create_child + source_prefab_path 중첩 설치**(bake 복사 금지), 완료 후 `.prefab`에서 `m_SourcePrefab` grep 증명.
+
+1. `Assets/Scripts/Ending/EndingBot.cs` — namespace AfterYou.Ending. `Init(IdentityData)`로 틴트/moveSpeed/jumpForce 주입(필드 대입만). FixedUpdate: 수평 속도만 덮어쓰기(y 보존 — 축 분리 규약), 접지 시 랜덤 점프(타이머), 전방 레이캐스트(Ground 마스크 256, useTriggers=false)로 벽 감지 시 방향 반전 + 랜덤 방향 전환 타이머. 접지 판정 OverlapBox(발밑, Ground만). UnityEngine.Random 사용(연출 전용 — 결정성 무관).
+2. `Assets/Scripts/Ending/EndingSequence.cs` — `Begin(IdentityData[] 복사본, Transform levelParent)`: Level_Ending Instantiate + 봇 종류별 1기 스폰(x 산개 ±18 이내) + ALL CLEAR 하강 코루틴(SmoothStep) + `_hideDuringEnding` GameObject[] 숨김 + CharacterSelectUI.SetSuppressed(true). `Stop()`: 소유 리스트 기반 역순 정리(봇/레벨 인스턴스 Destroy, 코루틴 StopCoroutine, 라벨 초기 anchoredPosition 복원, 숨긴 GO 전부 SetActive(true) 복원, SetSuppressed(false)). **이중 호출 안전 가드 + IsActive 프로퍼티**. EndingSequence GO 자체 SetActive(false) 금지(토글러 데드락 패턴).
+3. `Assets/Prefabs/Ending/EndingBot.prefab` — SpriteRenderer(Player와 동일 스프라이트 guid `96df851bdc6dceb44af67797957285fd`) + Rigidbody2D(Dynamic, mass 1, gravityScale 3, freezeRotation) + BoxCollider2D + EndingBot + AfterimageTrail. 레이어 Default(0).
+4. `Assets/Prefabs/Ending/Level_Ending.prefab` — Ground(top y=-7.71, 폭 40.53, 검정, Ground 레이어) + 좌우 벽(x≈±20, **top ≥ -3.2 (바닥 top +4.5 이상 — jumpForce 14 도달고 3.33 차단)**, 검정, Ground 레이어). LevelDefinition 없음 — `_levels`에 등록하지 않고 EndingSequence가 GameObject로 소유.
+
+## 씬 수정 (SampleScene)
+
+- Canvas 하위 `AllClearLabel` — legacy `UnityEngine.UI.Text`(프로젝트 TMP 미사용), Pretendard-Bold(guid `89715c641a174fe49b2a48491d439c29`), 검정 글자. **anchor top-center + anchoredPosition 오프셋 방식(절대 스크린 좌표 금지)** — 초기 위치는 화면 위 밖(라벨 높이 이상 오프셋), 하강 목표도 anchoredPosition 기준. CanvasScaler는 ScaleWithScreenSize 1920×1080 match 0.5 확인됨.
+- `=== MANAGERS ===` 하위 EndingSequence 컴포넌트 + 참조 연결: LevelManager._endingSequence / EndingSequence의 라벨·봇 프리팹·엔딩 레벨 프리팹·_hideDuringEnding(**PaperHUD + StatusText 필수** — statusText HelpLine이 엔딩 중 ALL CLEAR에 겹치는 것 방지)·CharacterSelectUI.
 
 ## 구현 순서
-1단계: JumpPad.cs 작성 → read_console 컴파일 확인
-   ⚠ 주석 3종 필수: ① 마스크 1 고정 사유(클론은 기록 궤적이 발사를 재현 — 513 변경 금지) ② vy≤ε는 라이브 전용이라 "속도 판정 금지" 제약(클론 vy 항상 0) 미적용 ③ 패드 위 정지 시 매 틱 재발사(트램펄린)는 의도된 동작
-2단계: JumpPad.prefab 생성 (MCP)
-3단계: Level_1_8.prefab 생성 + JumpPad 중첩 설치 (MCP)
-   ⚠ 기믹 바닥 매몰 재발 방지(과거 72점 원인): JumpPad 상면이 바닥 top −7.71 위에 오도록 좌표를 산술로 먼저 확정
-   ⚠ Climbable 벽 배치 금지: 벽부착 branch(PlayerController.cs:141)가 y를 덮어써 발사 소멸 — JumpPad 인접에 Climbable 두지 않는다
-   ⚠ 게이트 산술(다른 값 쓰면 재검산): 발사고 = launchSpeed²/58.86, 점프고 = jumpForce²/58.86. 기본값 base 18 / penalty 0.8 / min 5 → 발사고 Light 5.50 / Climber 5.03 / Carrier 4.57 / Heavy 1.98. 렛지 = 패드 top +4.0 → ① Light 점프고 3.33+0.3 초과 ✓ ② Light 발사고 −0.5 이하(이산 손실 방향) ✓ ③ Heavy 발사고 +0.3 초과 ✓
-4단계: SampleScene `_levels` 등록 (MCP 프로퍼티 세팅만) → git diff로 1줄 삽입 외 변경 0 확인
-5단계: 플레이 모드 실측 — ① 발사 틱 전후 `_tick` vs 클론 재생 위치 일치(재시작 2회 반복 동일성) ② Heavy가 렛지에 발사대 위에서도 못 닿음을 절대 좌표(bounds.min.y 최댓값)로 양방향 실측 ③ 기존 레벨 회귀 = Level_1_6/1_7 로드 후 기믹 구동+콘솔 0 ④ 측정은 점프 입력 없이(코요테 상쇄 회피) ⑤ `git status`로 신규 3파일+씬 1줄 외 변경 0 증명
 
-## 참조처 맵
-- ITickGimmick 구현체(신규 JumpPad가 7번째, 인터페이스 무수정 — 기존 영향 0) → CrumblingPlatform.cs:23, IdentityPortal.cs:24, KillZone.cs:25, MovingPlatform.cs:22, TimedDoor.cs:19, ToggleSwitch.cs:22
-- ITickGimmick 구동/리셋 경로 → 수집 LevelManager.cs:125 → 주입 RoundManager.cs:153 / 리셋 3경로 = Initialize(174~176)·RestartTake(626~629)·Rewind/EnterSelecting(744~746) / 구동 285 → DriveGimmicks(776~780). **JumpPad는 ResetGimmick만 구현하면 3경로 전부 자동 커버**
-- CharacterActor.Identity(:58) → RoundManager.cs:510/592/792, IdentityPortal.cs:71, PressurePlate.cs:126 — JumpPad는 읽기만 추가, 기존 영향 0
-- LevelDefinition 직렬화 필드(:13~28) → `_levelName`/`_identities`/`_bannedIdentities`/`_spawnPoint`/`_levelExit`/`_boxes`
-- SampleScene `_levels` → SampleScene.unity:2793~2800 (현재 7개, Level_1_8이 8번째)
-- Identity 실측: Light jumpForce 14·W1(점프고 3.33) / Carrier 12·W3(2.45) / Climber 10·W2(1.70) / Heavy 10·W10(1.70) — Light 상한 14.96 준수
+1단계: AfterimageTrail.cs 완화 (2곳) + CharacterSelectUI.cs SetSuppressed (2곳) → 컴파일 확인
+2단계: EndingBot.cs + EndingSequence.cs 신규 → 컴파일 확인
+3단계: LevelManager.cs — CleanupCurrentLevel 추출(라인 이동만) → 엔딩 분기 + Update 재구성
+   ⚠ **Update 재구성 순서 (Critic 지시)**: ①디버그 블록 내부에서 `if (_isEnding) { _endingSequence.Stop(); _isEnding = false; }` 후 LoadLevel ②디버그 블록 다음 `if (_isEnding) { Enter/N → 재시작; return; }` ③기존 Cleared 가드.
+   ⚠ **엔딩 재시작 콜백 순서 고정**: `FadeOutThen(() => { _endingSequence.Stop(); _isEnding = false; _unlockedIdentities.Clear(); LoadLevel(0); })` — **Stop이 Clear보다 반드시 먼저**. 페이드 중 재입력은 IsFading 선가드.
+   ⚠ **페이더 미할당 폴백의 동일 프레임 Enter 누수**: 동기 LoadLevel(0) 직후 같은 프레임 enterKey가 RoundManager에 재소비되어 즉시 녹화 시작 위험 — 폴백 경로에 위험 주석 명기(페이드 경유 시 콜백이 코루틴 프레임이라 안전).
+4단계: EndingBot.prefab + Level_Ending.prefab 제작 (MCP), 봇 스폰 y ≥ -7.0
+5단계: 씬 수정 — AllClearLabel + EndingSequence + 참조 연결 (직렬화 연결 전수 확인)
+6단계: 컴파일 0 확인 + 스모크 준비
 
-## 과거 실패 패턴
-- 기믹 바닥 매몰(Phase 3-3 1회차 72점) — 배치 좌표 산술 선행으로 방지
-- 도달고 공식 과신(공식 대비 실측 −0.1~−0.15) — 마진 방향 규칙: 닿아야 하는 게이트 = 공식 −0.5 이하, 못 닿아야 하는 게이트 = 공식 +0.3 이상
-- 속도 세팅 두 곳 경합(Phase 3-2 Major) — 이번엔 PlayerController.cs:150이 y 보존이라 발사 속도 생존 판정(Critic 확인). 벽부착 branch만 예외 → Climbable 배치 금지로 회피
-- 트리거 레이어 오배치 무한 점프 — 별도 트리거 콜라이더 금지, OverlapBox 질의만
+## 참조처 맵 (Critic 실측)
+
+- `LevelManager.LoadLevel` → LevelManager.cs:47(Start), :147/:151(LoadNextLevel), :164/:169(디버그 키). 외부 0
+- `LevelManager.LoadNextLevel` → CharacterSelectUI.cs:50(Next 버튼), LevelManager.cs:182(Enter/N)
+- `AfterimageTrail` → 코드 참조 0, Player.prefab:254 직렬화 1건. RequireComponent 제거는 기존 직렬화 무영향
+- `CharacterSelectUI` → 코드 참조 0, SampleScene.unity:2072 1건
+- `ScreenFader.FadeOutThen/IsFading` → LevelManager.cs:146~147 단일
+- `RoundManager.State` 독자 → CharacterSelectUI.cs:62/89/93, PaperHudUI.cs:35, RecIndicatorUI.cs:32, LevelManager.cs:139/175. RoundManager 자체 Update/FixedUpdate/코루틴은 `_isInitialized` 가드로 엔딩 중 완전 휴면 — **RoundManager 0줄 제약 성립**
+- `Keyboard.current` → RoundManager.cs:446(_isInitialized 가드로 엔딩 중 무발화), LevelManager.cs:159/178
+
+## 과거 실패 패턴 (Critic)
+
+- **지오메트리 매몰(72점 회차)** — 봇 스폰/벽 좌표 산술 선확정: 화면 half-width 20.27(ortho 11.4×16/9), 바닥 top -7.71 실측 정합 확인. 벽 top ≥ -3.2.
+- **UI 토글러 자기 SetActive 데드락(#6)** — EndingSequence는 상시 활성 MANAGERS에, 끄는 대상은 남(라벨/HUD)만.
+- **리셋 경로 전수 조사(#5)** — 엔딩 이탈 경로 3종(Enter 재시작 / PageDown / PageUp) 전부 Stop 경유.
+- **_unlockedIdentities 참조 전달 함정** — Begin에서 복사본(ToArray) 보관 (Clear 순서 실수 방어).
 
 ## 참조 패턴
-- [카테고리: 시스템조립] #5 설치형 틱 기믹 시스템(88점, 반복 2회) — 반영한 핵심 접근: 인터페이스 2분할 계약 + GetComponentsInChildren 자동 수집 드롭인(매니저 0줄), 리셋 3경로 자동 커버, 중첩 프리팹 인스턴스 설치(m_SourcePrefab 증명), 씬 지오메트리 실측 선행, 도달고 산술 게이트 증명
-- [카테고리: 데이터주도설계] #2 정체성+압력판(97점) — 반영한 핵심 접근: Weight는 순수 데이터(mass 금지), Kinematic 혼입 검출은 기하 판정(라이브 전용 vy 조건은 제약 범위 밖임을 Critic 판정), ContactFilter2D 3중 필터 + 재사용 List 할당 0
+
+- [카테고리: 시스템조립] #3 레벨=프리팹 교체 + 런타임 주입 — 반영한 핵심 접근: 파괴는 소유 리스트 기반 / 씬 참조는 SerializeField 배선 / 정리 순서 고정(Teardown→파괴→null). #5의 "리셋 경로 전수 조사", #6의 "토글러 데드락 회피"도 반영.
 
 ## 동작 조건 (Evaluator 체크리스트)
-- [ ] JumpPad.cs가 ITickGimmick 구현, 자체 Update/FixedUpdate 없음 — DriveGimmickTick으로만 구동
-- [ ] 라이브가 위에서 밟으면(발바닥 상면 tolerance 내 && vy ≤ ε) 그 틱에 `linearVelocity.y = launchSpeed`로 수직 발사
-- [ ] 발사 속도 = max(min, base − (Weight−1)×penalty) — Light(W1) > Climber(W2) > Carrier(W3) > Heavy(W10) 순 도달고 차등이 플레이 모드 실측으로 확인됨
-- [ ] base/penalty/min 배율 필드가 JumpPad 인스펙터에 노출됨
-- [ ] 클론(Clone 레이어 9, Kinematic)은 발사 질의 대상이 아님(마스크 1) — 클론 재생 시 기록된 발사 궤적이 라이브와 동일하게 재현됨(실측)
-- [ ] 재시작(RestartTake/EnterSelecting/Initialize) 시 ResetGimmick 경유로 동일 입력 → 동일 발사 틱·동일 궤적 재현(2회 반복 실측)
-- [ ] JumpPad.prefab: Ground 레이어(8) + 비트리거 BoxCollider2D — 위에 착지 가능
-- [ ] Level_1_8.prefab에 JumpPad가 중첩 프리팹 인스턴스(m_SourcePrefab)로 설치, LevelManager 자동 수집으로 매니저 코드 0줄 동작
-- [ ] Level_1_8 게이트: 렛지가 Light 점프고 초과 + Light 발사고 이내 + Heavy 발사고 초과 (절대 좌표 양방향 실측)
-- [ ] 기존 레벨 1_1~1_7 프리팹 + RoundManager/LevelManager/PlayerController/CharacterActor diff 0, Level_1_6/1_7 플레이 회귀 없음(콘솔 0)
+
+- [ ] 마지막 레벨(Level_1_8) 클리어 후 N/Enter/Next 버튼 → 첫 레벨로 순환하지 않고 페이드 경유 엔딩 진입
+- [ ] ALL CLEAR 텍스트가 화면 위 밖에서 내려와 안착 (SmoothStep, Canvas 하위 legacy Text, Pretendard-Bold, 검정)
+- [ ] 해금 정체성 종류 수만큼 봇 스폰(마지막 레벨 도달 시 4기), 각 봇 색 = 정체성 TintColor, 점프력 = 정체성 JumpForce(차등)
+- [ ] 봇들이 좌우 이동 + 간헐 점프, 좌우 벽에서 방향 전환, 화면 밖 이탈 없음 (벽 top이 최고 점프 도달고 이상)
+- [ ] 봇 이동 시 잔상 트레일 표시 (AfterimageTrail 재사용, CharacterActor 없이 동작)
+- [ ] 엔딩 중 카드 도크·StatusText(HelpLine)·PaperHUD 미표시, REC/Next 버튼 미표시
+- [ ] 엔딩 중 Enter/N → Stop→해금 풀 Clear→LoadLevel(0) 순서로 첫 레벨 재시작, 2회차 엔딩도 정상(라벨 초기 위치 복원)
+- [ ] 엔딩 중 PageDown/PageUp → 엔딩 잔재 0 (봇/레벨/라벨/HUD 복원 후 레벨 로드)
+- [ ] 엔딩 중 RoundManager 휴면 유지 (Enter가 녹화를 트리거하지 않음 — _isInitialized=false)
+- [ ] 기존 레벨 전환(1→2 등) 및 라이브 캐릭터 잔상 동작 불변
 - [ ] 컴파일 에러/워닝 0

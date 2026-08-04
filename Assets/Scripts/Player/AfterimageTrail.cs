@@ -6,7 +6,7 @@ namespace AfterYou.Player
     /// <summary>
     /// 라이브(조작 중) 캐릭터 뒤로 이동 잔상을 남긴다. 클론/대기 모드에서는 아무것도 하지 않는다.
     /// </summary>
-    [RequireComponent(typeof(CharacterActor), typeof(SpriteRenderer))]
+    [RequireComponent(typeof(SpriteRenderer))]
     public class AfterimageTrail : MonoBehaviour
     {
         [Tooltip("잔상 생성 간격(초)")]
@@ -66,7 +66,8 @@ namespace AfterYou.Player
 
         private void LateUpdate()
         {
-            if (_actor.Mode != CharacterMode.Live)
+            // CharacterActor가 없는 오브젝트(엔딩 봇 등)는 라이브/클론 개념이 없으므로 항상 잔상을 남긴다.
+            if (_actor != null && _actor.Mode != CharacterMode.Live)
             {
                 _wasLive = false;
                 return;

@@ -41,6 +41,18 @@ namespace AfterYou.UI
         private readonly List<Button> _cards = new List<Button>();
         private readonly List<Image> _cardIcons = new List<Image>();
 
+        /// <summary>외부(엔딩 연출)가 도크를 강제로 숨기는 스위치. RoundState와 무관하게 선택 UI를 봉인한다.</summary>
+        private bool _isSuppressed;
+
+        /// <summary>
+        /// 선택 도크 강제 숨김 토글. EndingSequence가 엔딩 진입 시 true, 종료 시 false로 되돌린다.
+        /// RoundManager 상태를 건드리지 않고 표시만 막는 용도다.
+        /// </summary>
+        public void SetSuppressed(bool suppressed)
+        {
+            _isSuppressed = suppressed;
+        }
+
         private void Awake()
         {
             if (_cardTemplate != null)
@@ -59,7 +71,7 @@ namespace AfterYou.UI
             if (_cards.Count != typeCount)
                 RebuildCards(typeCount);
 
-            bool canSelect = _roundManager.State == RoundState.Selecting;
+            bool canSelect = !_isSuppressed && _roundManager.State == RoundState.Selecting;
             bool hasBudget = _roundManager.ConfirmedCount < _roundManager.CloneBudget;
 
             // 선택 도크는 선택 시점에만 보인다 — 녹화/클리어 중엔 숨겨 화면을 비운다.
