@@ -854,6 +854,22 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.a
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.b
+      value: 0.45
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.g
+      value: 0.16
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.r
+      value: 0.12
+      objectReference: {fileID: 0}
     - target: {fileID: 3700000000000000006, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
       propertyPath: _linkedPortal
       value: 
@@ -938,6 +954,22 @@ PrefabInstance:
     - target: {fileID: 3700000000000000002, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.a
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.b
+      value: 0.45
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.g
+      value: 0.16
+      objectReference: {fileID: 0}
+    - target: {fileID: 3700000000000000003, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
+      propertyPath: m_Color.r
+      value: 0.12
       objectReference: {fileID: 0}
     - target: {fileID: 3700000000000000006, guid: f0525981f3f346d4b87e0da1bc50cc9f, type: 3}
       propertyPath: _linkedPortal

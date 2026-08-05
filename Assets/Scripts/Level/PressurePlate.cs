@@ -36,6 +36,13 @@ namespace AfterYou.Level
         [Tooltip("발바닥이 판 윗면보다 이만큼 아래여도 '올라섰다'고 인정한다. 물리 솔버의 미세한 파고듦 흡수용.")]
         [SerializeField] private float _standTolerance = 0.08f;
 
+        [Header("Motion")]
+        [Tooltip("눌렸을 때 판이 내려가는 깊이. 프리팹 배치는 '올라온' 상태 기준이며, 눌리면 이만큼 내려가 지면과 맞닿는다.")]
+        [SerializeField] private float _pressDepth = 0.06f;
+
+        [Tooltip("판 이동 속도(유닛/초). 순수 연출 — 판정은 고정 앵커를 쓰므로 게임 규칙에 영향 없다.")]
+        [SerializeField] private float _moveSpeed = 0.6f;
+
         [Header("Rule")]
         [Tooltip("문을 열기 위해 필요한 Weight 합. 무거운형(10) 1기 = 개방, 가벼운형(1) 3기 = 합 3 < 10 → 개방 불가.")]
         [SerializeField] private float _requiredWeight = 10f;
@@ -57,12 +64,26 @@ namespace AfterYou.Level
         private ContactFilter2D _contactFilter;
         private Collider2D _plateCollider;
 
+        /// <summary>연출용 이동의 양끝 위치. 프리팹 배치 위치가 '올라온' 상태다.</summary>
+        private Vector3 _raisedLocalPos;
+        private Vector3 _pressedLocalPos;
+
+        /// <summary>감지 앵커(= 눌린 상태의 판 윗면 = 지면 높이). 판이 연출로 움직여도 판정이 흔들리지 않도록
+        /// 고정 좌표를 캐시해 쓴다 — Update 이동(프레임레이트 의존)이 판정에 새어들면 틱 결정성이 깨진다.</summary>
+        private bool _isAnchorCached;
+        private float _anchorTop;
+        private float _anchorCenterX;
+        private float _anchorWidth;
+
         /// <summary>현재 눌려 있는가(= Weight 합 >= 요구 무게).</summary>
         public bool IsPressed { get; private set; }
 
         private void Awake()
         {
             _plateCollider = GetComponent<Collider2D>();
+
+            _raisedLocalPos = transform.localPosition;
+            _pressedLocalPos = _raisedLocalPos + Vector3.down * _pressDepth;
 
             // useTriggers=false: Physics2DSettings의 QueriesHitTriggers가 1이라 기본값이면 트리거(Exit 등)도 잡힌다.
             // 캐릭터 콜라이더는 모두 비트리거이므로 여기서 걸러도 손해가 없다.
@@ -77,6 +98,17 @@ namespace AfterYou.Level
 
         private void FixedUpdate()
         {
+            // 앵커는 첫 FixedUpdate에 캐시한다. Awake 시점의 Collider2D.bounds는 물리 등록 전이라 신뢰할 수 없고,
+            // 첫 FixedUpdate까지는 판이 시작(올라온) 위치에 있음이 보장된다 — 이동은 눌림 이후 Update에서만 일어난다.
+            if (!_isAnchorCached)
+            {
+                Bounds startBounds = _plateCollider.bounds;
+                _anchorTop = startBounds.max.y - _pressDepth; // 눌린 상태의 윗면 = 지면 높이
+                _anchorCenterX = startBounds.center.x;
+                _anchorWidth = startBounds.size.x;
+                _isAnchorCached = true;
+            }
+
             float totalWeight = MeasureWeightOnPlate();
             bool shouldBePressed = totalWeight >= _requiredWeight;
 
@@ -90,14 +122,20 @@ namespace AfterYou.Level
                 _door.SetOpen(IsPressed);
         }
 
-        /// <summary>판 위에 실제로 서 있는 캐릭터들의 Weight 합을 잰다.</summary>
+        private void Update()
+        {
+            // 연출 전용 이동. 판정은 고정 앵커(_anchorTop)를 쓰므로 이 움직임은 게임 규칙에 영향을 주지 않는다.
+            Vector3 target = IsPressed ? _pressedLocalPos : _raisedLocalPos;
+            transform.localPosition = Vector3.MoveTowards(transform.localPosition, target, _moveSpeed * Time.deltaTime);
+        }
+
+        /// <summary>판 위에 실제로 서 있는 캐릭터들의 Weight 합을 잰다. 판정 기준은 고정 앵커다(연출 이동과 무관).</summary>
         private float MeasureWeightOnPlate()
         {
-            Bounds plateBounds = _plateCollider.bounds;
-            float plateTop = plateBounds.max.y;
+            float plateTop = _anchorTop;
 
-            Vector2 boxCenter = new Vector2(plateBounds.center.x, plateTop + _detectionHeight * 0.5f);
-            Vector2 boxSize = new Vector2(plateBounds.size.x, _detectionHeight);
+            Vector2 boxCenter = new Vector2(_anchorCenterX, plateTop + _detectionHeight * 0.5f);
+            Vector2 boxSize = new Vector2(_anchorWidth, _detectionHeight);
 
             Physics2D.OverlapBox(boxCenter, boxSize, 0f, _contactFilter, _overlapBuffer);
 
@@ -149,7 +187,9 @@ namespace AfterYou.Level
             if (plateCollider == null) return;
 
             Bounds plateBounds = plateCollider.bounds;
-            Vector3 boxCenter = new Vector3(plateBounds.center.x, plateBounds.max.y + _detectionHeight * 0.5f, 0f);
+            // 에디트 모드(앵커 미캐시)에서는 배치 위치가 '올라온' 상태이므로 눌림 깊이를 빼서 실제 판정 위치를 그린다.
+            float plateTop = _isAnchorCached ? _anchorTop : plateBounds.max.y - _pressDepth;
+            Vector3 boxCenter = new Vector3(plateBounds.center.x, plateTop + _detectionHeight * 0.5f, 0f);
             Vector3 boxSize = new Vector3(plateBounds.size.x, _detectionHeight, 0f);
 
             Gizmos.color = Color.cyan;

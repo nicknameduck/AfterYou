@@ -36,6 +36,9 @@ namespace AfterYou.Managers
         [Tooltip("마지막 레벨 클리어 후 재생할 엔딩 연출(씬 상주).")]
         [SerializeField] private EndingSequence _endingSequence;
 
+        [Tooltip("게임 시작 타이틀 패널(씬 Canvas 소속). 미할당이면 타이틀 없이 기존처럼 즉시 시작한다.")]
+        [SerializeField] private GameObject _titlePanel;
+
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
 
@@ -49,9 +52,62 @@ namespace AfterYou.Managers
         /// <summary>엔딩 연출 진행 중 여부. 이 동안에는 라운드가 없고 Enter/N이 "처음부터 다시"로 동작한다.</summary>
         private bool _isEnding;
 
+        /// <summary>타이틀 화면 상태 여부. 이 동안에는 레벨이 로드되지 않아 라운드/기믹/타이머가 아예 존재하지 않는다.</summary>
+        private bool _isAtTitle;
+
         private void Start()
         {
+            // 타이틀 게이트 — Start 버튼(StartGame)을 누르기 전에는 레벨을 로드하지 않는다.
+            if (_titlePanel != null)
+            {
+                _isAtTitle = true;
+                _titlePanel.SetActive(true);
+            }
+            else
+            {
+                LoadLevel(0);
+            }
+        }
+
+        /// <summary>타이틀의 Start 버튼이 호출한다. 패널을 내리고 첫 레벨을 시작한다.</summary>
+        public void StartGame()
+        {
+            if (!_isAtTitle) return;
+
+            _isAtTitle = false;
+            _titlePanel.SetActive(false);
             LoadLevel(0);
+        }
+
+        /// <summary>어느 상태에서든 게임을 걷어내고 타이틀 화면으로 돌아간다(ESC). 해금 풀까지 비운다.</summary>
+        private void ReturnToTitle()
+        {
+            if (_screenFader != null)
+            {
+                if (_screenFader.IsFading) return;
+                _screenFader.FadeOutThen(() => EnterTitle());
+            }
+            else
+            {
+                EnterTitle();
+            }
+        }
+
+        /// <summary>타이틀 상태로 진입한다. 엔딩 정리 → 레벨/라운드 정리 → 해금 풀 비우기 순서 고정 —
+        /// 엔딩 Stop이 먼저여야 봇/무대와 UI 숨김 스냅숏이 걷힌 뒤에 패널이 올라간다.</summary>
+        private void EnterTitle()
+        {
+            if (_isEnding)
+            {
+                _endingSequence.Stop();
+                _isEnding = false;
+            }
+
+            CleanupCurrentLevel();
+            _unlockedIdentities.Clear();
+
+            _isAtTitle = true;
+            _titlePanel.SetActive(true);
         }
 
         /// <summary>진행 중인 라운드와 현재 레벨/캐릭터를 모두 정리한다. 레벨 교체와 엔딩 진입이 공유한다.</summary>
@@ -217,6 +273,17 @@ namespace AfterYou.Managers
 
         private void Update()
         {
+            // 타이틀 상태 — 게임 입력(디버그 키 포함)을 전부 봉인한다. 시작은 StartGame(버튼)만.
+            if (_isAtTitle) return;
+
+            // ESC — 어느 상태에서든(플레이/녹화/클리어/엔딩) 타이틀로 복귀. 패널이 연결된 경우에만 동작한다.
+            Keyboard escapeKeyboard = Keyboard.current;
+            if (_titlePanel != null && escapeKeyboard != null && escapeKeyboard.escapeKey.wasPressedThisFrame)
+            {
+                ReturnToTitle();
+                return;
+            }
+
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             // 디버그 전용 강제 스테이지 이동(임시 — 테스트 끝나면 제거 예정). 클리어 여부 무시.
             Keyboard debugKeyboard = Keyboard.current;
