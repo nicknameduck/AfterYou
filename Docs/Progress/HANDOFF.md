@@ -2,10 +2,11 @@
 
 > 이 파일은 **날짜 로그와 달리 항상 덮어쓴다.** 새 세션은 이 파일 하나로 "지금 어디인지"를 파악하고, 상세 이력은 날짜 파일을 참조한다.
 
-**마지막 갱신**: 2026-08-05
+**마지막 갱신**: 2026-08-06
 
 ## 현재 위치
 
+- **클리어 리플레이 연출 1차분(협력 고리 + 리플레이 모드) · 미커밋** (2026-08-06, 하네스 91/100 Major 0, 1회차 통과) — 코어 루프 5단계(동시 재생 리플레이) 완성. `Replay/` 신규 3파일: `ChainTimelineTracker`(고리 이벤트 로깅 — "사전 스캔"은 기하 재계산이 아니라 **결정론 기반 플레이 중 이벤트 로깅**: 기믹 이벤트는 클리어 테이크 로그가 곧 타임라인, 착지는 테이크별 기록→확정 시 슬롯 귀속) + `ReplayDirector`(오버레이 틱 구동자 — Cleared 휴면 위, 자체 _replayTick으로 박스→기믹→클론 ApplyTick, 타임라인 `<=` 소급 발화, 스킵=아무 키/클릭(ESC·Alt·Tab·Meta 제외, 그레이스 0.25s), `BlocksClearedInput` 3구간 게이트: 딜레이 중‖재생 중‖종료 프레임) + `ReplayFlourishUI`(고리 카운트+검정 펄스+스킵 힌트). 기믹 이벤트 4종 노출(PressurePlate.OnPressed/Door·TimedDoor.OnOpened/LevelExit.OnCleared/PlayerController.OnLandedOnClone — 접지 판정 불변, 클론 마스크 별도 질의). RoundManager +65줄(보호 블록 0 diff — CurrentTick·이벤트 4종·ResetUndoStack·클리어 테이크 박스 커밋). 리플레이 종료(완주/스킵 공통) 시 undo 스택 리셋 + Next 복귀. 실측: 틱 diff 0.000000/타임라인 N=5 발화 정합/재도전 재로드 2회 정상/콘솔 0. 잔여 Minor 6(네이밍 2, FlourishUI OnDisable 미정리, 스킵 시 보드 중간 상태 동결 — 완주와 최종 화면 불일치, 힌트 위치 하단 중앙, _skipGrace 스펙 외 옵션 — 전부 기능 무영향). 플레이테스트 대기(딜레이 0.6s/펄스/카운트 전부 Inspector 튜닝 가능)
 - **게임 시작 타이틀 UI + ESC 타이틀 복귀 · 미커밋** (2026-08-05) — `LevelManager.cs`: 타이틀 게이트(`_titlePanel` 미할당 시 즉시 시작 폴백), Start()가 LoadLevel(0) 대신 패널 표시, `StartGame()`(버튼) / ESC → `ReturnToTitle()`(페이드 경유, 엔딩 Stop → CleanupCurrentLevel → 해금 풀 Clear → 패널). "시간 정지"는 timeScale이 아닌 **레벨 미로드** — 라운드/기믹/타이머가 아예 없음. RoundManager 0줄(휴면 가드 위 오버레이 — 엔딩과 동일 전제). SampleScene: TitlePanel(흰 풀스크린)+AFTER YOU+START 버튼, **FadeOverlay 바로 아래**(페이드 최상단 유지). 스모크 실측: 진입 정지/시작/ESC 복귀+해금 풀 0 리셋/재시작 신규 세션/콘솔 0. 플레이테스트 대기
 - **압력판 눌림 연출 + 상자 이음새 걸림 해결 · 미커밋** (2026-08-05) — `PressurePlate.cs`: 판이 밟히면 0.06 내려가고 떼면 복귀(MoveTowards, 연출 전용). **감지 판정은 첫 FixedUpdate에 캐시한 고정 앵커**(= 눌린 상태 윗면 = 지면 top -7.71)로 분리 — Update 이동이 판정에 새어들면 틱 결정성 붕괴라 필수. `Level_1_1/1_3/1_4.prefab`: 발판 y -7.86→-7.8(지면 위 0.06 돌출 배치 = 올라온 상태), 콜라이더 **트리거화**(발판 solid 콜라이더가 지면과 동일 높이로 맞물린 이음새에 밀리는 상자가 걸리던 기존 문제 원천 제거 — "order in layer 때문"은 오진, 렌더링 전용 속성). 사용자 정렬 순서 1 변경(1_3/1_4)은 유지(묻힌 발판 시인성에 필요). 컴파일 0, 플레이테스트 대기
 - **엔딩 연출(ALL CLEAR + 정체성 봇 + 잔상) · 커밋 진행** (2026-08-05, 하네스 98/100 Major 0, 1회차 통과 — 경량화 체계 첫 시스템급 적용) — 마지막 레벨(Level_1_8) 클리어 후 첫 레벨 순환 대신 엔딩 진입(페이드 경유). `EndingBot.cs`(간이 AI — 정체성별 틴트/이동속도/점프력 차등 주입, 수평만 덮어쓰기 y 보존, 접지 시 랜덤 점프, 벽 레이캐스트 반전) + `EndingSequence.cs`(ALL CLEAR 하강 SmoothStep +200→-300, 해금 종류별 봇 1기, UI 숨김 activeSelf 스냅숏 복원, Stop 소유 리스트 역순 정리) + `EndingBot.prefab`/`Level_Ending.prefab`(바닥 top -7.71 + 벽 top -1.0 — jump 14 도달 상단 -3.38 차단) + LevelManager 엔딩 분기(CleanupCurrentLevel 추출, 엔딩 중 Enter/N → Stop→해금 풀 Clear→LoadLevel(0) 재시작) + AfterimageTrail CharacterActor 의존 완화(봇 잔상 재사용) + CharacterSelectUI.SetSuppressed(엔딩 중 State=Selecting 잔존 도크 봉인). **RoundManager 0줄 수정** — Teardown 휴면 가드(_isInitialized) 위에 올린 라운드 밖 오버레이 모드(성공 패턴 #7 신규). 스모크 실측: 봇 4기 차등/라벨 하강/이탈 0/잔상 27장/재시작 잔재 0/콘솔 0. 잔여 Minor 4(도달 불가 방어 분기, 디버그 키 페이드 레이스, 주석 오류, 잔상 루트 이름 — 전부 기능 무영향). 엔딩 체감(봇 신남 정도·타이밍)은 플레이테스트 대기, 파라미터 전부 Inspector 노출
@@ -44,10 +45,11 @@
 
 1. **[사용자 몫] 엔딩 플레이테스트 + 포트폴리오 영상 촬영** — 마지막 레벨 클리어 → 엔딩 체감(봇 점프 빈도/속도/방향 전환 리듬, ALL CLEAR 하강 1.2s, 잔상 밀도 — 전부 Inspector 튜닝 가능). 엔딩에서 Enter/N으로 처음부터 재시작(해금 풀 리셋) 가능해 촬영 반복 용이
 2. **[사용자 몫] Level_1_4~1_8 플레이테스트** — 기존 대기(박스 밀기+벽타기+벽점프) + 기믹 감각: 문 3초 타이밍, 수정된 캐리감, 깨지는 발판 1.5초(Heavy 이동속도로 다리 횡단 가능한지), 포탈 왕복 조작감, Heavy 렛지 게이트, **점프대 발사감(Light/Heavy 차등 체감, 인스펙터 base 18/penalty 0.8/min 5 튜닝 여지)** + 레벨 전환 페이드 체감(흰색 0.3s) + **압력판 눌림 연출(1_1/1_3/1_4 — 상자 통과·판 하강·복귀·문 열림, _pressDepth/_moveSpeed 튜닝 여지)**
-3. **클리어 리플레이 연출(§9.3) + undo 스택 리셋** (Phase 3 잔여, 코어 루프 5단계 완성) — 기믹 C# 이벤트 노출(OnPressed/OnOpened/OnLandedOnClone/OnCleared) 포함. 재미 검증 통과로 선행 조건 충족
-4. **천장 이동** (벽타기 확장) — Phase 3 마지막 잔여
-5. **[비차단·임의 시점] 아트 Step 2 잔여** — Identity 에셋 4색 적용만 남음 (`Assets/Data/Identities/Identity_*.asset` 4개 `_tintColor`, ART-DIRECTION.md §2 확정값). 셰이더·REC 오버레이·Volume·실루엣은 2026-07-25 완료
-6. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / 기믹 4곳+`PressurePlate.cs:113` 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / 발판 top=지면 top 동일 높이 구간에선 탑승자가 지면에 인계됨(레벨 설계 시 유의) / 포탈 속도 보존 — 고속 낙하 진입 배치 유의 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만)
+3. **[사용자 몫] 리플레이 연출 플레이테스트** — 클리어 → 리플레이 자동 진입 체감(딜레이 0.6s), 고리 카운트/펄스 강도, 스킵 반응성, 스킵 후 Next 흐름. 전부 Inspector 튜닝 가능
+4. **리플레이 2차분: 음악 스템 수직 레이어링** (GDD §9.3.3) — 타임라인이 이미 고리 수 N과 발화 틱을 사전 확정하므로 음악 아크 조립 구조 접합만 남음. 사운드 에셋은 Phase 5
+5. **천장 이동** (벽타기 확장) — Phase 3 마지막 잔여
+6. **[비차단·임의 시점] 아트 Step 2 잔여** — Identity 에셋 4색 적용만 남음 (`Assets/Data/Identities/Identity_*.asset` 4개 `_tintColor`, ART-DIRECTION.md §2 확정값). 셰이더·REC 오버레이·Volume·실루엣은 2026-07-25 완료
+7. **잔여 Minor**: `CharacterSelectUI.cs` 매 프레임 `SetActive`(Phase 5 병합) / 기믹 4곳+`PressurePlate.cs:113` 핫패스 GetComponentInParent / ToggleSwitch 바운스 이중 토글 가능성 / TimedDoor-Door 로직 중복 / 발판 top=지면 top 동일 높이 구간에선 탑승자가 지면에 인계됨(레벨 설계 시 유의) / 포탈 속도 보존 — 고속 낙하 진입 배치 유의 / [원인 미상 1회 관측] `_gimmicks=null` 상태 Rewind NRE(재현 실패, 기록만) / **리플레이 Minor 6건**(harness-last.md — 스킵 시 보드 중간 상태 동결·FlourishUI OnDisable 미정리·네이밍 2·힌트 위치·_skipGrace)
 
 ## 유효 제약 (건드리면 깨지는 것들)
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using AfterYou.Managers;
+using AfterYou.Replay;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -27,6 +28,9 @@ namespace AfterYou.UI
         [SerializeField] private Text _statusText;
         [SerializeField] private LevelManager _levelManager;
         [SerializeField] private Button _nextButton;
+
+        [Tooltip("클리어 리플레이 구동자. 리플레이 중에는 Next 버튼과 안내 문구를 봉인한다.")]
+        [SerializeField] private ReplayDirector _replayDirector;
 
         private const string HelpLine = "1/2/3 · ↑↓ 캐릭터 선택 → Enter 시작 | 녹화 중: Enter 확정 · R 재촬영 | Backspace 되감기";
 
@@ -97,13 +101,17 @@ namespace AfterYou.UI
                 }
             }
 
+            // 리플레이 중(시작 대기 구간 포함)에는 다음 레벨 유도를 통째로 감춘다 — 안내와 실제 입력 가능 여부가
+            // 어긋나면(버튼은 보이는데 눌리지 않음) 그게 더 나쁜 상태다. 스킵 안내는 리플레이 UI가 담당한다.
+            bool isReplaying = _replayDirector != null && _replayDirector.BlocksClearedInput;
+
             if (_nextButton != null)
-                _nextButton.gameObject.SetActive(_roundManager.State == RoundState.Cleared);
+                _nextButton.gameObject.SetActive(_roundManager.State == RoundState.Cleared && !isReplaying);
 
             if (_statusText != null)
             {
                 _statusText.text = _roundManager.State == RoundState.Cleared
-                    ? "클리어! 완료 버튼 / Enter / N키로 다음 레벨"
+                    ? (isReplaying ? string.Empty : "클리어! 완료 버튼 / Enter / N키로 다음 레벨")
                     : HelpLine;
             }
         }

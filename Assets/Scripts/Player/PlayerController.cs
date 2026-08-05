@@ -51,6 +51,15 @@ namespace AfterYou.Player
         private float _jumpBufferCounter;
         private bool _isGrounded;
 
+        /// <summary>클론(9) 레이어 전용 마스크. 접지 판정과는 별개로 "무엇을 밟았는가"만 묻는 질의에 쓴다.</summary>
+        private int _cloneLayerMask;
+
+        /// <summary>직전 프레임의 접지 여부. 공중 → 접지 전이(착지 순간)를 잡는 데만 쓴다.</summary>
+        private bool _wasGrounded;
+
+        /// <summary>공중에서 클론 위로 착지한 순간 발화. 클리어 리플레이의 협력 고리 수집 전용이다.</summary>
+        public event System.Action OnLandedOnClone;
+
         private bool _canClimbWalls;
         private bool _isWallAttached;
         private int _wallDirection;
@@ -66,6 +75,10 @@ namespace AfterYou.Player
             // 레퍼런스 카운팅이 없어 호출 순서에 따라 액션이 최종 Disable → 2라운드부터 조작 불능이 된다.
             _inputActions = Instantiate(_inputActions);
 
+            // NameToLayer는 없는 레이어에 -1을 준다. 1 << -1은 정의되지 않은 시프트이므로 0(검출 없음)으로 막는다.
+            int cloneLayer = LayerMask.NameToLayer("Clone");
+            _cloneLayerMask = cloneLayer >= 0 ? 1 << cloneLayer : 0;
+
             InputActionMap map = _inputActions.FindActionMap(_actionMapName, throwIfNotFound: true);
             _moveAction = map.FindAction("Move", throwIfNotFound: true);
             _jumpAction = map.FindAction("Jump", throwIfNotFound: true);
@@ -75,6 +88,10 @@ namespace AfterYou.Player
         {
             _moveAction.Enable();
             _jumpAction.Enable();
+
+            // 테이크 시작 첫 프레임은 "이미 접지"로 본다. 스폰 지점에 클론이 서 있는 경우
+            // 스폰 자체가 착지로 오인되는 것을 막는다(전이는 다음 이륙 이후부터 성립).
+            _wasGrounded = true;
         }
 
         private void OnDisable()
@@ -91,6 +108,15 @@ namespace AfterYou.Player
 
             // 접지 체크: 발밑 박스에 지면 레이어가 겹치는지
             _isGrounded = Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _groundLayer);
+
+            // 착지 대상 판별(연출 전용). 접지 판정은 위 한 줄이 단독 소유하고, 여기서는 "무엇을 밟았는가"만
+            // 클론 레이어 전용 마스크로 한 번 더 묻는다 — OverlapBox는 겹친 콜라이더 중 하나만 돌려주므로
+            // 지면과 클론이 함께 걸린 경우 위 결과만으로는 클론 여부를 알 수 없기 때문이다.
+            if (_isGrounded && !_wasGrounded && _cloneLayerMask != 0
+                && Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _cloneLayerMask))
+                OnLandedOnClone?.Invoke();
+
+            _wasGrounded = _isGrounded;
 
             // 벽점프 락아웃: 재부착·수평 덮어쓰기를 잠시 막는다. 착지하면 즉시 해제(입력 무시 구간 최소화).
             if (_isGrounded)
