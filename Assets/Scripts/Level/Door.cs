@@ -32,9 +32,6 @@ namespace AfterYou.Level
         /// <summary>현재 열려 있는가. 닫힘이 기본 상태다.</summary>
         public bool IsOpen { get; private set; }
 
-        /// <summary>닫힘 → 열림으로 전이한 순간 발화. 클리어 리플레이의 협력 고리 수집 전용이다.</summary>
-        public event System.Action OnOpened;
-
         private void Awake()
         {
             // 씬 시작 시 시각/물리 상태를 코드 상태(닫힘)와 강제로 일치시킨다.
@@ -49,10 +46,6 @@ namespace AfterYou.Level
         {
             if (IsOpen == isOpen) return;
             ApplyState(isOpen);
-
-            // 통지는 SetOpen에만 둔다 — Awake의 ApplyState(false)와 절연해 씬 시작 시 유령 발화를 막는다.
-            if (isOpen)
-                OnOpened?.Invoke();
         }
 
         private void ApplyState(bool isOpen)

@@ -17,10 +17,6 @@ namespace AfterYou.Level
     {
         [SerializeField] private RoundManager _roundManager;
 
-        /// <summary>라이브가 출구에 닿아 클리어가 확정되는 순간 발화(OnLevelCleared 직전).
-        /// 클리어 리플레이의 마지막 협력 고리 수집 전용이다.</summary>
-        public event System.Action OnCleared;
-
         /// <summary>
         /// 레벨 프리팹은 씬의 RoundManager를 직렬화 참조할 수 없다(프리팹→씬 참조 불가).
         /// LevelManager가 로드 시 주입한다.
@@ -39,9 +35,6 @@ namespace AfterYou.Level
             if (actor == null) return;
 
             if (actor != _roundManager.LiveCharacter) return;
-
-            // 통지가 먼저다 — OnLevelCleared가 상태를 Cleared로 바꾸기 전이라야 수집기가 클리어 틱을 읽을 수 있다.
-            OnCleared?.Invoke();
 
             _roundManager.OnLevelCleared();
         }

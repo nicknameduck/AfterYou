@@ -42,9 +42,6 @@ namespace AfterYou.Level
         /// <summary>현재 열려 있는가(IActivatable 계약). 스위치의 자기 동기화가 읽는다.</summary>
         public bool IsActivated => _isOpen;
 
-        /// <summary>닫힘 → 열림으로 전이한 순간 발화. 클리어 리플레이의 협력 고리 수집 전용이다.</summary>
-        public event System.Action OnOpened;
-
         private void Awake()
         {
             // 씬 시작 시 시각/물리 상태를 코드 상태(닫힘)와 강제로 일치시킨다(Door.Awake와 동일).
@@ -56,17 +53,10 @@ namespace AfterYou.Level
         {
             if (isActive)
             {
-                // ⚠ SetActivated(true)는 스위치의 자기 동기화 때문에 열린 상태에서도 반복 호출된다(타이머 리셋 용도).
-                //   통지는 실제 전이일 때만 해야 하므로 ApplyState 전에 이전 상태를 본다.
-                bool wasOpen = _isOpen;
-
                 ApplyState(true);
 
                 // 자동 닫힘 카운터. 실시간이 아니라 틱 수로 환산해 결정적으로 닫는다.
                 _remainingTicks = Mathf.CeilToInt(_openSeconds / Time.fixedDeltaTime);
-
-                if (!wasOpen)
-                    OnOpened?.Invoke();
             }
             else
             {

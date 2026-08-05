@@ -78,9 +78,6 @@ namespace AfterYou.Level
         /// <summary>현재 눌려 있는가(= Weight 합 >= 요구 무게).</summary>
         public bool IsPressed { get; private set; }
 
-        /// <summary>떼어짐 → 눌림으로 전이한 순간 발화. 클리어 리플레이의 협력 고리 수집(ChainTimelineTracker) 전용이다.</summary>
-        public event System.Action OnPressed;
-
         private void Awake()
         {
             _plateCollider = GetComponent<Collider2D>();
@@ -123,10 +120,6 @@ namespace AfterYou.Level
 
             if (_door != null)
                 _door.SetOpen(IsPressed);
-
-            // 눌린 순간만 통지한다(떼어짐은 고리가 아니다). 이 블록 자체가 전이 시점이므로 별도 비교가 필요 없다.
-            if (IsPressed)
-                OnPressed?.Invoke();
         }
 
         private void Update()

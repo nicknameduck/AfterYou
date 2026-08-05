@@ -28,9 +28,7 @@ namespace AfterYou.UI
         {
             if (_roundManager == null) return;
 
-            // 클리어 후에는 마지막 값을 홀드한다. 리플레이가 끝나며 확정 스택을 리셋하므로,
-            // 갱신을 계속하면 "사용한 클론 3기"가 클리어 화면에서 0으로 튄다.
-            if (_cloneValue != null && _roundManager.State != RoundState.Cleared)
+            if (_cloneValue != null)
                 _cloneValue.text = $"{_roundManager.ConfirmedCount} / {_roundManager.CloneBudget}";
 
             if (_timeValue != null)

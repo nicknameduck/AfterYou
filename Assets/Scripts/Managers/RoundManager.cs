@@ -98,21 +98,6 @@ namespace AfterYou.Managers
 
         public RoundState State => _state;
 
-        /// <summary>현재 중앙 틱. 클리어 리플레이의 협력 고리가 발생 시각을 스탬프하는 유일한 기준이다.</summary>
-        public int CurrentTick => _tick;
-
-        /// <summary>새 테이크가 시작됐다(Recording 진입 직후). 테이크 단위 로그를 비우는 신호.</summary>
-        public event System.Action TakeStarted;
-
-        /// <summary>테이크가 확정돼 클론으로 승격됐다. 인자는 확정된 슬롯 인덱스.</summary>
-        public event System.Action<int> TakeConfirmed;
-
-        /// <summary>확정 슬롯이 되감기로 폐기됐다. 인자는 폐기된 슬롯 인덱스.</summary>
-        public event System.Action<int> SlotRewound;
-
-        /// <summary>레벨이 클리어됐다(OnLevelCleared 말미).</summary>
-        public event System.Action Cleared;
-
         public int ConfirmedCount => _confirmedSlots.Count;
 
         public int SlotCount => _characters != null ? _characters.Length : 0;
@@ -140,10 +125,6 @@ namespace AfterYou.Managers
         }
 
         public bool IsSlotConfirmed(int index) => _confirmedSlots.Contains(index);
-
-        /// <summary>확정 스택 i번째의 액터. 클리어 리플레이가 재생 대상을 자기 리스트로 복사할 때 쓴다. 범위 밖이면 null.</summary>
-        public CharacterActor GetConfirmedActor(int i) =>
-            _characters != null && i >= 0 && i < _confirmedSlots.Count ? _characters[_confirmedSlots[i]] : null;
 
         /// <summary>Selecting 상태에서 Enter 대기 중인 예비 선택 정체성 종류. 없으면 -1. UI 카드 하이라이트용.</summary>
         public int PendingTypeIndex => _pendingTypeIndex;
@@ -586,9 +567,6 @@ namespace AfterYou.Managers
             PrepareBoxesForRound(index);
 
             _state = RoundState.Recording;
-
-            // ⚠ 반드시 Recording 진입 "후"에 통지한다 — 수집기가 State == Recording 게이트로 기록 여부를 판단한다.
-            TakeStarted?.Invoke();
         }
 
         /// <summary>현재 테이크를 확정해 클론으로 승격시킨다. Enter 또는 시간 상한 도달 시.</summary>
@@ -625,12 +603,8 @@ namespace AfterYou.Managers
                 }
             }
 
-            int confirmedSlot = _liveIndex;
-
             _liveIndex = -1;
             EnterSelecting();
-
-            TakeConfirmed?.Invoke(confirmedSlot);
         }
 
         /// <summary>현재 테이크만 폐기하고 같은 캐릭터로 다시 녹화한다. 확정 스택은 건드리지 않는다.</summary>
@@ -691,8 +665,6 @@ namespace AfterYou.Managers
                     if (_boxes[i].OwnerSlot == slot)
                         _boxes[i].ClearOwnership();
                 }
-
-                SlotRewound?.Invoke(slot);
             }
 
             EnterSelecting();
@@ -706,43 +678,6 @@ namespace AfterYou.Managers
             _state = RoundState.Cleared;
             _clearedElapsedSeconds = Time.time - _levelStartTime; // "사용한 총 시간"은 클리어 순간에 정지
             Debug.Log($"[RoundManager] LEVEL CLEARED — 사용한 클론 {_confirmedSlots.Count}기");
-
-            // 클리어 테이크의 박스 커밋. 이 테이크는 ConfirmClone을 거치지 않고 끝나므로 여기서 직접 확정하지 않으면
-            // 클리어 순간에 밀고 있던 박스가 Record(미확정)로 남아 클리어 리플레이에서 재생되지 않는다.
-            // ConfirmClone의 커밋 블록과 동일한 규칙이다(움직인 박스만 소유 승격, 아니면 기록 폐기).
-            if (_liveIndex >= 0)
-            {
-                CharacterActor actor = _characters[_liveIndex];
-                if (actor.Identity != null && actor.Identity.CanManipulateObjects)
-                {
-                    for (int i = 0; i < _boxes.Length; i++)
-                    {
-                        PushableBox box = _boxes[i];
-                        if (box.Mode != PushableBoxMode.Record) continue;
-
-                        if (box.HasDisplacement(BoxDisplacementEpsilon))
-                            box.CommitRecording(_liveIndex);
-                        else
-                            box.DiscardRecording();
-                    }
-                }
-            }
-
-            Cleared?.Invoke();
-        }
-
-        /// <summary>
-        /// 확정 스택만 비운다. 클리어 리플레이가 끝난 뒤 되돌리기 이력을 정리하는 전용 경로다.
-        /// </summary>
-        /// <remarks>
-        /// Cleared 상태에서만 동작한다 — 진행 중인 라운드에서 불리면 클론 재생/되감기/압사 판정이 통째로 어긋난다.
-        /// 클론 오브젝트 자체는 건드리지 않는다(리플레이 종료 화면에 그대로 남아 있어야 한다).
-        /// </remarks>
-        public void ResetUndoStack()
-        {
-            if (_state != RoundState.Cleared) return;
-
-            _confirmedSlots.Clear();
         }
 
         /// <summary>

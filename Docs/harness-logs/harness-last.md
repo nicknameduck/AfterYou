@@ -1,74 +1,59 @@
-# 하네스 최신 결과 (2026-08-06) — 클리어 리플레이 연출 1차분 (협력 고리 + 리플레이 모드)
+# 하네스 최신 결과 (2026-08-05) — 엔딩 연출 (ALL CLEAR + 정체성 봇 + 잔상)
 
 ## 스펙
 
-클리어 리플레이 연출 1차분 — 협력 고리 감지 + 리플레이 모드 (GDD §9.3, 음악 스템은 2차로 제외)
+엔딩 연출 구현 — 마지막 레벨 클리어 시 첫 레벨 순환 대신 엔딩 진입. 포트폴리오 영상용 간단 엔딩: ① 위에서 아래로 내려오는 ALL CLEAR 텍스트 ② 지금까지 사용 가능한 도형 캐릭터들이 왔다갔다 점프도 하며 자유자재로 신나게 뛰어다니는 간이 AI ③ 잔상 동반.
 
-- 기믹 C# 이벤트 노출: OnPressed / OnOpened / OnLandedOnClone / OnCleared (기존 기믹 수정 — 감지 지점은 이미 구현된 상태 변화 지점)
-- 클리어 시 리플레이 모드 자동 진입: 전 클론 + 라이브 궤적을 처음부터 동시 재생
-- 리플레이 시작 전 확정 궤적을 스캔해 협력 고리 타임라인을 사전 생성 (고리 N개 = 고조 N단계)
-- 리플레이 중 고리가 걸리는 순간 시각 강조 연출 (단계 카운트 표시 + 화면 펄스 등 — 미니멀)
-- 리플레이 스킵: 아무 키/클릭 시 즉시 종료 → 클리어 흐름(Next). "아무 키나 눌러 건너뛰기" 힌트
-- 리플레이 종료(완주/스킵 모두) 후 undo 스택 리셋 + 기존 클리어 흐름(Next) 복귀
-
-동작 조건(원문): 1.자동 재생 2.틱 단위 일치 3.타임라인 동일 틱 발화 4.고조 누적 표시 5.아무 입력 즉시 스킵+후처리 동일 6.다음 레벨·재도전 정상 7.회귀 없음
+- EndingBot.cs 신규 — 좌우 랜덤 워크 + 랜덤 점프, 벽/가장자리 방향 전환, Rigidbody2D 물리, 정체성 틴트 + 정체성별 점프력 차등
+- EndingSequence.cs 신규 — ALL CLEAR 하강 SmoothStep, 해금 정체성 종류별 봇 1마리, Enter/N 첫 레벨 재시작
+- Level_Ending.prefab 신규 — 바닥 top y=-7.71 + 좌우 벽
+- LevelManager.cs 수정 — 마지막 레벨 클리어 시 엔딩 분기, ScreenFader 페이드 경유, _unlockedIdentities 전달
+- AfterimageTrail.cs 소폭 수정 — CharacterActor 의존 완화(봇 재사용), 라이브 동작 불변
+- CharacterSelectUI.cs 소폭 수정 — SetSuppressed(엔딩 중 State=Selecting 잔존으로 도크 재표시되는 문제 봉인)
+- SampleScene — Canvas 하위 AllClearLabel(legacy Text, Pretendard-Bold, 검정) + EndingSequence + 참조 연결
+- 제약: RoundManager 0줄 수정 / 클론 시스템 규약 불변 / 기존 레벨 프리팹 무수정 — 전부 준수 확인
 
 ## 동작 조건 (평가 결과)
 
-- [✓] 클리어 시 _startDelay(0.6s) 후 자동 리플레이 진입 — 전 클론 + ex-live 동시 재생 (ReplayDirector.cs:106-129, 143-161)
-- [✓] 리플레이 궤적 틱 단위 일치 — 실측 replayTick=30에서 rb.position vs recording frame[30] **diff 0.000000**
-- [✓] 타임라인 Begin 시점 확정 — 실측 N=5 `[0:PlatePressed, 12:PlatePressed, 12:DoorOpened, 445:LandedOnClone, 445:Cleared]` 4종 전부 포함
-- [✓] 고조 발화 정합 — replayTick=30에서 firedChainCount=3 == 틱≤30 이벤트 수, chainText "고리 3 / 5" 누적
-- [✓] 스킵 힌트 표시/숨김 실측
-- [✓] 아무 키/클릭 즉시 스킵 + 같은 프레임 LoadNextLevel 미실행 (BlocksClearedInput + _endedFrame 이중 안전, 실측 levelIndex 불변)
-- [✓] 종료 후 undo 스택 리셋(ConfirmedCount 1→0 실측) + Next 재표시 + N/Enter 정상(levelIndex 0→1)
-- [✓] 리플레이 중(딜레이 포함) Next 숨김·차단 (실측 pending 구간 nextButtonActive=False)
-- [✓] ESC/PageDown 이탈 잔재 0 (CleanupCurrentLevel 최우선 StopImmediate, 재로드 2회 에러 0)
-- [✓] HUD 클론 카운트 Cleared 홀드 (실측 "1 / 2" 유지)
-- [✓] 회귀 없음 — RoundManager 보호 블록 diff 0(순수 추가 65줄), 세션 전체 콘솔 에러 0
-- [✗→실측 보완] 스펙 조건 6 "재도전"이 체크리스트에 명시 항목으로 누락 [-5 스펙 감사] — 단 Evaluator가 실측으로 별도 확인: 같은 레벨 재로드 2회·재라운드·재클리어·재리플레이 전부 정상
+- [✓] 마지막 레벨(Level_1_8, _levels 8개) 클리어 후 N/Enter/Next → 페이드 경유 엔딩 진입 (LevelManager.cs:157, :164-165)
+- [✓] ALL CLEAR 화면 위 밖→하강 안착 (EndingSequence.cs:174 SmoothStep, 실측 y +199.98→-300.00)
+- [✓] 해금 종류별 봇 스폰 4기, 색=TintColor, 점프력=JumpForce 차등 (실측 jump 10/10/12/14, 색 4종 상이)
+- [✓] 좌우 이동 + 간헐 점프 + 벽 반전, 이탈 없음 (벽 top -1.0 vs 점프 최고 상단 -3.38, 18초 실측 |x|<20.3)
+- [✓] 잔상 트레일 CharacterActor 없이 동작 (실측 *_Afterimages 4개, 활성 고스트 27장, NRE 0)
+- [✓] 엔딩 중 카드 도크·PaperHUD·REC·Next 미표시 (SetSuppressed + activeSelf 스냅숏 숨김)
+- [✓] Enter/N → Stop→해금 풀 Clear→LoadLevel(0), 2회차 엔딩 정상 (라벨 y=200 복원 실측)
+- [✓] PageDown/PageUp 디버그 이탈 시 엔딩 잔재 0 (LevelManager.cs:228, :234 — Stop 선행)
+- [✓] 엔딩 중 RoundManager 휴면 (_isInitialized=False 실측, Enter 녹화 미트리거)
+- [✓] 기존 레벨 전환·라이브 잔상 불변 (재시작 후 _isInitialized=True 실측)
+- [✓] 컴파일 에러/워닝 0
 
 ## 참조 패턴
 
-- [시스템조립] #7 엔딩 오버레이 모드 — 코어 enum 무추가, Cleared 휴면 가드 위 독립 시퀀스, State 독자 전수 조사, 복사본 절연, 단일 Stop
-- [코어시스템] #1 녹화·재생 코어 — 틱 단일 소유(자기 _replayTick), tick+1 규약 ApplyTick 재사용, 구동 순서 복제(박스→기믹→클론)
+- [카테고리: 시스템조립] #3 레벨=프리팹 교체 + 런타임 주입 — 소유 리스트 파괴 / SerializeField 배선 / 정리 순서 고정. #5 리셋 경로 전수 조사(엔딩 이탈 3경로 전부 Stop 경유), #6 토글러 데드락 회피(EndingSequence 자기 SetActive 금지)도 반영
 
 ## 점수
 
-**91 / 100** (Major 0, 1회차 통과)
-
-| 섹션 | 점수 |
-|---|---|
-| 코딩 컨벤션 | 10/12 |
-| Unity 생명주기 | 8/9 |
-| 성능 | 10/10 |
-| 안전성 | 9/9 |
-| 기능 충족 | 23/23 |
-| 스모크 실측 | 17/17 |
-| 단순성 | 9/10 |
-| 완결성 | 10/10 |
-| 스펙 감사 | -5 |
+**98/100** (1회차) — 컨벤션 12/12, 생명주기 9/9, 성능 10/10, 안전성 9/9, 기능 충족 23/23, 스모크 실측 17/17, 단순성 8/10, 완결성 10/10. Major 0.
 
 ## 피드백
 
-### Major
-- 없음
-
-### Minor
-1. ReplayDirector.cs:70 `BlocksClearedInput` — is/has/can 접두사 규정 위반 (`ShouldBlockClearedInput` 권장) [-1]
-2. PlayerController.cs:57 `_wasGrounded` — 접두사 불일치(관용적) [-1]
-3. ReplayFlourishUI.cs — OnDisable/OnDestroy 부재: 직접 비활성화 시 펄스 알파/텍스트 스케일 잔재 가능. OnDisable에서 HideAll 권장 [-1]
-4. ReplayDirector.cs:284-302 — 스킵 시 보드가 리플레이 중간 상태로 동결: 스킵 시 마지막 틱 1회 적용(ApplyTick(_replayLength-1))하면 완주와 최종 화면 일치
-5. SkipHint 배치가 하단 중앙 — 스펙 문구는 "화면 구석" (기능 무해)
-6. ReplayDirector.cs:37, 274-278 — _skipGrace 옵션 + Alt/Tab/Meta 제외는 스펙 외 방어 분기(취지 타당) [-1]
-7. 체크리스트에 스펙 조건 6 "재도전" 명시 누락 [스펙 감사 -5 원인 — 실동작은 정상]
+- [Minor] EndingSequence.cs:148 — `_hiddenPreviousStates` null/길이 방어는 도달 불가능 분기 (단순성 -2)
+- [Minor] LevelManager.cs:225-231 — 엔딩 진입 페이드 진행 중(sub-second) PageDown 시 레이스 (디버그 전용 창, 기존 전환에도 동일 구조, Enter/PageDown으로 즉시 복구)
+- [Minor] EndingBot.cs:78-80 — "Awake 순서 미보장" 주석은 사실과 다름(활성 프리팹 Instantiate는 반환 전 Awake 실행). Init의 GetComponent<SpriteRenderer>()는 캐시 재사용 가능
+- [Minor] EndingSequence.cs:92-94 — bot.name 지정이 Instantiate 이후라 잔상 루트 이름이 `EndingBot(Clone)_Afterimages`로 남음 (기능 무영향)
 
 ## 수정 파일
 
-- Assets/Scripts/Managers/RoundManager.cs (+65, 보호 블록 0 diff)
-- Assets/Scripts/Managers/LevelManager.cs (+27)
-- Assets/Scripts/Level/PressurePlate.cs (+7) / Door.cs (+7) / TimedDoor.cs (+10) / LevelExit.cs (+7)
-- Assets/Scripts/Player/PlayerController.cs (+26)
-- Assets/Scripts/UI/CharacterSelectUI.cs (+12/-2) / PaperHudUI.cs (+4/-1)
-- Assets/Scripts/Replay/ChainTimelineTracker.cs (신규) / ReplayDirector.cs (신규) / ReplayFlourishUI.cs (신규)
-- Assets/Scenes/SampleScene.unity (+395 — ReplayDirector/ChainTimelineTracker 오브젝트 + Canvas 리플레이 UI 3종, FadeOverlay 아래 sibling 7)
+- Assets/Scripts/Managers/LevelManager.cs (185→261줄)
+- Assets/Scripts/Player/AfterimageTrail.cs (165→166줄, 2곳)
+- Assets/Scripts/UI/CharacterSelectUI.cs (139→151줄, 2곳)
+- Assets/Scenes/SampleScene.unity (+137/-0)
+- Assets/Scripts/Ending/EndingBot.cs (신규)
+- Assets/Scripts/Ending/EndingSequence.cs (신규)
+- Assets/Prefabs/Ending/EndingBot.prefab (신규)
+- Assets/Prefabs/Ending/Level_Ending.prefab (신규)
+
+## 비고
+
+- Generator 의도적 편차 1건 수용: `_hideDuringEnding` 복원을 "전부 SetActive(true)"가 아닌 Begin 시점 activeSelf 스냅숏 복원으로 — StatusText가 씬에서 원래 비활성이라 무조건 복원이 회귀가 되는 것을 방지
+- 경량화 체계(스모크 실측 1회 + 독립 Critic) 첫 시스템급 적용 회차

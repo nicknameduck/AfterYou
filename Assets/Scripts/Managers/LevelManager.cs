@@ -3,7 +3,6 @@ using AfterYou.Clone;
 using AfterYou.Core;
 using AfterYou.Ending;
 using AfterYou.Level;
-using AfterYou.Replay;
 using AfterYou.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -39,12 +38,6 @@ namespace AfterYou.Managers
 
         [Tooltip("게임 시작 타이틀 패널(씬 Canvas 소속). 미할당이면 타이틀 없이 기존처럼 즉시 시작한다.")]
         [SerializeField] private GameObject _titlePanel;
-
-        [Tooltip("클리어 리플레이 구동자(씬 상주). 미할당이면 클리어 후 리플레이 없이 기존처럼 바로 다음 레벨로 넘어간다.")]
-        [SerializeField] private ReplayDirector _replayDirector;
-
-        [Tooltip("협력 고리 타임라인 수집기(씬 상주). 미할당이면 리플레이가 고조 연출 없이 재생만 된다.")]
-        [SerializeField] private ChainTimelineTracker _chainTracker;
 
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
@@ -120,14 +113,6 @@ namespace AfterYou.Managers
         /// <summary>진행 중인 라운드와 현재 레벨/캐릭터를 모두 정리한다. 레벨 교체와 엔딩 진입이 공유한다.</summary>
         private void CleanupCurrentLevel()
         {
-            // 0) 클리어 리플레이 잔재 제거. 대기 코루틴까지 취소해야 정리 직후 Begin이 깨어나 파괴된 액터를 잡는 일이 없다.
-            //    수집기의 구독도 여기서 끊는다 — 곧 파괴될 기믹/캐릭터에 대한 참조를 남기지 않는다.
-            if (_replayDirector != null)
-                _replayDirector.StopImmediate();
-
-            if (_chainTracker != null)
-                _chainTracker.UnbindLevel();
-
             // 1) 진행 중인 라운드를 안전하게 종료한다. 참조(_characters)를 비우기 전에 RoundManager부터 정리해야
             //    전환 순간 LevelExit이 LiveCharacter를 읽어도 NRE가 나지 않는다.
             _roundManager.Teardown();
@@ -212,13 +197,6 @@ namespace AfterYou.Managers
             KillZone[] killZones = _currentLevel.GetComponentsInChildren<KillZone>(true);
             for (int i = 0; i < killZones.Length; i++)
                 killZones[i].BindRoundManager(_roundManager);
-
-            // 5-2) 클리어 리플레이 배선 — 라운드 구동 전에 걸어야 첫 테이크(TakeStarted)부터 고리가 수집된다.
-            if (_chainTracker != null)
-                _chainTracker.BindLevel(_currentLevel, _spawnedActors);
-
-            if (_replayDirector != null)
-                _replayDirector.BindLevel(_currentLevel.Boxes, gimmicks);
 
             // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
@@ -336,11 +314,6 @@ namespace AfterYou.Managers
                     RestartFromEnding();
                 return;
             }
-
-            // 클리어 리플레이(시작 대기 구간 + 재생 중 + 종료 프레임) 동안에는 다음 레벨 입력을 삼킨다.
-            // 스킵 입력이 그대로 레벨 전환으로 새면, 리플레이가 잡고 있던 액터가 같은 프레임에 파괴된다.
-            // ESC/디버그 키는 이 게이트보다 위에서 처리되므로 여전히 통한다(정리는 CleanupCurrentLevel이 담당).
-            if (_replayDirector != null && _replayDirector.BlocksClearedInput) return;
 
             if (_roundManager.State != RoundState.Cleared) return;
 
