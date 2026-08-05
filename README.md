@@ -48,10 +48,3 @@ Planner ──→ Critic ──→ Generator ──→ Evaluator
 | [Docs/harness-logs/](Docs/harness-logs/) | 회차별 채점 기록 · 성공 패턴 |
 | [Docs/Progress/HANDOFF.md](Docs/Progress/HANDOFF.md) | 세션 인수인계 스냅샷 — 현재 상태 · 유효 제약 · 폐기한 접근 |
 | [Docs/Progress/](Docs/Progress/) | 일자별 작업 로그 |
-
-## 개발자
-
-**박성호** — 前 펄어비스 검은사막 모바일 UI 프로그래머 (5년 5개월)
-
-- Email: parksh6607@naver.com
-- AI 파이프라인 소개 영상: (업로드 후 추가 예정)
