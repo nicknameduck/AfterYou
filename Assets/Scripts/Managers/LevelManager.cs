@@ -215,7 +215,8 @@ namespace AfterYou.Managers
             // 7) 클리어 리플레이 감독에 이번 레벨의 구동 대상을 주입한다.
             //    Initialize 이후여야 한다 — 캐릭터가 이미 초기 모드로 정렬된 뒤에 붙잡아야 상태가 어긋나지 않는다.
             if (_replayDirector != null)
-                _replayDirector.Bind(_roundManager, _spawnedActors.ToArray(), _currentLevel.Boxes, gimmicks);
+                _replayDirector.Bind(_roundManager, _spawnedActors.ToArray(), _currentLevel.Boxes, gimmicks,
+                    _currentLevel.LevelExit);
         }
 
         /// <summary>클리어 상태에서 다음 레벨로 넘어간다. N키와 Next 버튼(CharacterSelectUI)이 공용으로 호출한다.</summary>

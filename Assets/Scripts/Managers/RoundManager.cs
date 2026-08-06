@@ -113,6 +113,9 @@ namespace AfterYou.Managers
         public float RemainingRecordSeconds =>
             _state == RoundState.Recording ? Mathf.Max(0f, (MaxTicks - _tick) * Time.fixedDeltaTime) : 0f;
 
+        /// <summary>녹화 시간 상한(초). 리플레이 HUD가 남은 시간 카운트다운 기준으로 쓴다.</summary>
+        public float MaxRecordSeconds => _maxRecordSeconds;
+
         /// <summary>레벨 시작 후 경과 시간(초). 클리어 순간의 값에서 정지한다. HUD "사용한 총 시간" 표시용.</summary>
         public float ElapsedSeconds
         {

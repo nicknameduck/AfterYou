@@ -64,8 +64,11 @@ namespace AfterYou.Replay
         /// <summary>1패스 완주 후 반복 재생까지의 대기 시간(초).</summary>
         private const float LoopDelaySeconds = 2f;
 
-        [Tooltip("리플레이 HUD(스킵 힌트 + 고조 단계). 미할당이면 HUD 없이 재생만 한다.")]
+        [Tooltip("리플레이 HUD(스킵 힌트). 미할당이면 HUD 없이 재생만 한다.")]
         [SerializeField] private ReplayHudUI _hud;
+
+        [Tooltip("완주 후 히어로가 출구 중심으로 빨려 들어가는 시간(초).")]
+        [SerializeField] private float _absorbDuration = 0.35f;
 
         /// <summary>고리 도달 순간 발행된다. 인자는 누적 고조 단계(1부터).</summary>
         public event Action<int> OnRingReached;
@@ -75,6 +78,12 @@ namespace AfterYou.Replay
         private CharacterActor[] _actors = Array.Empty<CharacterActor>();
         private PushableBox[] _boxes = Array.Empty<PushableBox>();
         private ITickGimmick[] _gimmicks = Array.Empty<ITickGimmick>();
+
+        /// <summary>이번 레벨의 출구. 완주 흡입 연출의 목표 지점이다. 레벨에 출구가 없으면 null이다.</summary>
+        private LevelExit _levelExit;
+
+        /// <summary>녹화 시간 상한(초) 캐시. 리플레이 HUD의 남은 시간 카운트다운 기준.</summary>
+        private float _maxRecordSeconds;
 
         /// <summary>레벨의 압력판들. 판/문은 ITickGimmick이 아니라 자체 FixedUpdate로 돌기 때문에 주입 경로가 없어 직접 수집한다.</summary>
         private PressurePlate[] _plates = Array.Empty<PressurePlate>();
@@ -107,6 +116,12 @@ namespace AfterYou.Replay
         private bool _isWaitingLoop;
         private float _loopResumeTime;
 
+        /// <summary>완주 직후 출구 흡입 연출 중인가. 이 동안 틱 구동은 정지하고 히어로 위치만 보간한다.</summary>
+        private bool _isAbsorbing;
+        private float _absorbElapsed;
+        private Vector2 _absorbStartPosition;
+        private Vector2 _absorbTarget;
+
         /// <summary>
         /// 리플레이 중인가.
         /// </summary>
@@ -121,14 +136,31 @@ namespace AfterYou.Replay
         public int RingCount => _timeline.Count;
 
         /// <summary>
+        /// 리플레이 경과 시간(초) — 현재 틱을 고정 스텝으로 환산한 값.
+        /// </summary>
+        /// <remarks>
+        /// 흡입/루프 대기 중엔 _replayTick이 고정되어 시간 표시도 멈춘다.
+        /// 클리어 순간 값에서 정지하는 RoundManager.ElapsedSeconds 규약과 동형이다.
+        /// </remarks>
+        public float ReplayElapsedSeconds => _replayTick * Time.fixedDeltaTime;
+
+        /// <summary>리플레이 남은 시간(초) — 녹화 상한에서 경과를 뺀 값. 0 아래로는 내려가지 않는다.</summary>
+        public float ReplayRemainingSeconds => Mathf.Max(0f, _maxRecordSeconds - ReplayElapsedSeconds);
+
+        /// <summary>
         /// 레벨 로드 시 LevelManager가 이번 레벨의 구동 대상을 주입한다. 레벨마다 1회.
         /// </summary>
-        public void Bind(RoundManager roundManager, CharacterActor[] actors, PushableBox[] boxes, ITickGimmick[] gimmicks)
+        public void Bind(RoundManager roundManager, CharacterActor[] actors, PushableBox[] boxes, ITickGimmick[] gimmicks,
+            LevelExit levelExit)
         {
             _roundManager = roundManager;
             _actors = actors ?? Array.Empty<CharacterActor>();
             _boxes = boxes ?? Array.Empty<PushableBox>();
             _gimmicks = gimmicks ?? Array.Empty<ITickGimmick>();
+
+            // 출구는 없을 수 있다(LevelDefinition.LevelExit 미할당) — 그 경우 흡입 연출은 건너뛰고 기존 완주 경로로 폴백한다.
+            _levelExit = levelExit;
+            _maxRecordSeconds = roundManager != null ? roundManager.MaxRecordSeconds : 0f;
 
             // 압력판은 레벨 프리팹 안에 있고 ITickGimmick이 아니므로 주입되지 않는다. 여기서 직접 수집한다.
             // 비활성 판은 제외한다 — FixedUpdate가 돌지 않아 판정 앵커(_anchorTop)가 캐시되지 않은 상태다.
@@ -137,6 +169,7 @@ namespace AfterYou.Replay
 
             _isPlaying = false;
             _isWaitingLoop = false;
+            _isAbsorbing = false;
             _hasStartedThisLevel = false;
             _hasRunPostProcess = false;
             _hero = null;
@@ -158,6 +191,7 @@ namespace AfterYou.Replay
             _actors = Array.Empty<CharacterActor>();
             _boxes = Array.Empty<PushableBox>();
             _gimmicks = Array.Empty<ITickGimmick>();
+            _levelExit = null;
             _plates = Array.Empty<PressurePlate>();
             _platePressedBaseline = Array.Empty<bool>();
 
@@ -273,11 +307,12 @@ namespace AfterYou.Replay
             _nextRingIndex = 0;
             _stage = 0;
             _isWaitingLoop = false;
+            _isAbsorbing = false;
             _hasRunPostProcess = false;
             _isPlaying = true;
 
             if (_hud != null)
-                _hud.Show(_timeline.Count);
+                _hud.Show();
         }
 
         /// <summary>
@@ -383,6 +418,15 @@ namespace AfterYou.Replay
                 return;
             }
 
+            // 완주 직후 출구 흡입 — 대기 분기와 마찬가지로 틱 구동 "앞"의 early-return이어야 한다.
+            // ⚠ 여기서 아래로 흘려보내면 _replayTick == _totalTicks 상태로 ApplyTick이 불려
+            //   frames[tick+1] 규약이 궤적 범위 밖 프레임을 조회한다.
+            if (_isAbsorbing)
+            {
+                DriveAbsorb();
+                return;
+            }
+
             // RoundManager.FixedUpdate와 동일한 순서(박스 → 기믹 → 캐스트)를 그대로 대행한다.
             // 순서가 다르면 같은 틱에서 기믹이 보는 박스/캐스트 위치가 라이브 플레이와 달라진다.
             for (int i = 0; i < _replayBoxes.Count; i++)
@@ -401,9 +445,6 @@ namespace AfterYou.Replay
                 _stage++;
 
                 OnRingReached?.Invoke(_stage);
-
-                if (_hud != null)
-                    _hud.SetStage(_stage);
             }
 
             _replayTick++;
@@ -412,12 +453,56 @@ namespace AfterYou.Replay
             {
                 RunPostProcessOnce();
 
-                _isWaitingLoop = true;
-                _loopResumeTime = Time.realtimeSinceStartup + LoopDelaySeconds;
+                BeginAbsorb();
             }
         }
 
-        /// <summary>반복 재생 준비 — 기믹/캐스트/박스/HUD 단계를 전부 처음 상태로 되돌린다.</summary>
+        /// <summary>
+        /// 완주 시점의 흡입 연출을 개시한다. 히어로나 출구가 없으면 흡입 없이 곧장 루프 대기로 넘어간다.
+        /// </summary>
+        /// <remarks>
+        /// 반복 재생이라 패스마다 다시 불린다 — 시작 위치와 경과를 매번 새로 잡아야 두 번째 패스부터
+        /// 흡입이 즉시 끝나거나 엉뚱한 지점에서 출발하지 않는다.
+        /// </remarks>
+        private void BeginAbsorb()
+        {
+            if (_hero == null || _levelExit == null)
+            {
+                _isWaitingLoop = true;
+                _loopResumeTime = Time.realtimeSinceStartup + LoopDelaySeconds;
+                return;
+            }
+
+            // 출구의 판정 콜라이더 중심으로 빨아들인다(RequireComponent(Collider2D)로 존재가 보장된다).
+            // 피벗(transform.position)이 아니라 bounds.center여야 시각적으로 "문 한가운데"로 들어간다.
+            _absorbStartPosition = _hero.Position;
+            _absorbTarget = _levelExit.GetComponent<Collider2D>().bounds.center;
+
+            _absorbElapsed = 0f;
+            _isAbsorbing = true;
+        }
+
+        /// <summary>흡입 1스텝. 틱 구동 밖의 순수 위치 보간이라 클론 재생 결정성에 영향을 주지 않는다.</summary>
+        private void DriveAbsorb()
+        {
+            // 시간 소스는 fixedDeltaTime으로 통일한다 — realtimeSinceStartup과 섞으면 스텝 누적이 어긋난다.
+            _absorbElapsed += Time.fixedDeltaTime;
+
+            if (_absorbElapsed >= _absorbDuration)
+            {
+                _hero.SetPosition(_absorbTarget); // 보간 잔차 없이 정확히 스냅시킨다.
+
+                _isAbsorbing = false;
+                _isWaitingLoop = true;
+                _loopResumeTime = Time.realtimeSinceStartup + LoopDelaySeconds;
+                return;
+            }
+
+            float t = Mathf.SmoothStep(0f, 1f, _absorbElapsed / _absorbDuration);
+            _hero.SetPosition(Vector2.Lerp(_absorbStartPosition, _absorbTarget, t));
+        }
+
+        /// <summary>반복 재생 준비 — 기믹/캐스트/박스를 전부 처음 상태로 되돌린다.</summary>
         private void ResetForLoop()
         {
             for (int i = 0; i < _gimmicks.Length; i++)
@@ -433,9 +518,6 @@ namespace AfterYou.Replay
             _nextRingIndex = 0;
             _stage = 0;
             _isWaitingLoop = false;
-
-            if (_hud != null)
-                _hud.SetStage(0);
         }
 
         /// <summary>
@@ -451,6 +533,7 @@ namespace AfterYou.Replay
 
             _isPlaying = false;
             _isWaitingLoop = false;
+            _isAbsorbing = false;
 
             RunPostProcessOnce();
 

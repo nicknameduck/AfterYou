@@ -1,61 +1,49 @@
-# 하네스 최신 결과 (2026-08-06) — 클리어 리플레이 연출 1차분 (협력 고리 타임라인 + 리플레이 모드)
+# 하네스 최신 결과 (2026-08-06) — 클리어 리플레이 후속 조정 3건 (시간 재흐름 + pip 제거 + 출구 흡입)
 
-> 하네스 v3 첫 실측. 고위험형(독립 Critic 선행). 이전 회차(구 체계 91/100, 커밋 `4254236`)는 롤백 후 참조 없이 재구현.
+> 고위험형(Bind 공개 API 시그니처 변경 + RoundManager 접촉 → 독립 Critic 선행). 스냅샷 커밋 `3ff3008`.
 
 ## 스펙
 
-GDD §9.3 클리어 리플레이 1차분 (음악 스텝 2차 제외):
-- 기믹 C# 이벤트 노출 4종: OnPressed(PressurePlate) / OnOpened(Door) / OnLandedOnClone(PlayerController) / OnCleared(LevelExit) — 이미 구현된 상태 변화 지점에서 발화
-- 클리어 시 리플레이 자동 진입: 전 클론 + 라이브(히어로) 궤적을 처음부터 동시 재생
-- 히어로는 원본 룩(원본 머티리얼·알파 1), 클론은 스캔라인 유지
-- 탈출 완료 2초 뒤 반복 재생 / 아무 키·클릭 스킵 → Next 흐름 / "아무 키나 눌러 건너뛰기" 힌트 / Next 버튼 유지
-- 종료(완주/스킵 공통) 후 undo 스택 리셋 + 기존 클리어 흐름 복귀
+클리어 리플레이 후속 조정 3건 (사용자 플레이테스트 피드백):
+- ① 리플레이 중 HUD 시간 재흐름 — 남은 시간 = 녹화 상한(15s) 카운트다운, 경과 = 0부터 다시 증가(사용자 확정 2026-08-06), 종료 시 기존 표시(--.--/클리어 값) 복귀
+- ② 상단 고조 pip(●○) 제거 — 스킵 힌트 유지, OnRingReached/타임라인/사전 스캔은 2차 음악용 유지
+- ③ 출구 덮임 마무리 — 마지막 틱 후 히어로를 출구 콜라이더 중심으로 ≈0.35s SmoothStep 흡입 보간 → 2s 루프 대기, 매 루프 재발동, 스킵/Unbind 즉시 중단
+- 제약: RoundManager 보호 블록 diff 0(MaxRecordSeconds 1줄 노출만), 클론 재생 결정성 불변
 
-## 동작 조건 (Evaluator 판정)
+## 동작 조건 (평가 결과)
 
-1. ✓ 클리어 시 리플레이 자동 시작, 전원 frame0 동시 재생 (ReplayDirector.cs:184-185, 258-259 — 실측 isPlaying=True)
-2. ✓ 궤적 틱 일치 — 실측 tick 158에서 클론/히어로 rb.position vs 기록 err=0.00000 (기준 0.001)
-3. ✓ 사전 스캔 타임라인 == 실발화 틱 — 실측 PlatePressed@4·DoorOpened@4, OnPressed/OnOpened 실발화가 OnRingReached(tick4)와 동일 fixedTime(2주기 재현), Cleared@524 발행
-4. ✓ 고조 단계 누적 — 실측 ●●○(2/3)→3/3, 총 pip=타임라인 수
-5. ✓ 스킵 후처리 완주 동일 — 실측 ConfirmedCount=0·HUD 숨김·Cleared 유지·같은 프레임 IsReplaying=True(Enter/N 누수 차단)
-6. ✓ Next/ESC/재시작 정상 — 실측 Level_1_2 로드·새 라운드 Recording·재바인드 정상
-7. ✓ 회귀 0 — RoundManager 보호 블록 diff 0(순수 추가 16줄), 기믹은 이벤트 추가만, 세션 콘솔 에러/경고 0
-8. ✓ 스킵 힌트 표시/숨김 — 실측 우하단 앵커(1,0), 리플레이 중 True·종료 후 False
-9. ✓ Next 버튼 리플레이 중 유지 — 실측 active=True
-10. ✓ 히어로 원본 룩 — 실측 Sprite-Lit-Default·α1.00 / 클론 CloneGhost·0.85
-11. ✓ 2초 후 반복 — 실측 2주기 관찰(틱 재순환·링 재발화·stage 재적립)
-12. ✓ 라이브 플레이 중 이벤트 발화 — 상태 전이 지점 발화(PressurePlate.cs:137-138, Door.cs:69-70, LevelExit.cs:47-50, PlayerController.cs:123-126)
+1. [✓] 리플레이 중 남은 = 상한−경과 / 경과 = 틱×fixedDeltaTime (실측 tick 264: hudT 09.72 = 15−05.28 정확)
+2. [✓] 종료 시 --.-- / 클리어 값 복귀 (실측 hudElapsed 06.73 = rmElapsed 6.726)
+3. [✓] 흡입/루프 대기 중 시간 정지 (실측 0.5s 간격 2회 동일, tick 336 고정)
+4. [✓] pip 미표시 + 스킵 힌트 유지 (씬 EscalationText 3블록 삭제, 런타임 Find null)
+5. [✓] 흡입 0.36s 소요, distToCenter 0.0000, 루프 재시작 시 distToSpawnFrame0 0.0000 (위치 오염 없음)
+6. [✓] 2패스 흡입 재발동 (absEl=0.000 재캡처)
+7. [✓] 스킵 시 _isAbsorbing=False + ResetUndoStack 1회 가드
+8. [✓] 흡입 분기 early-return이 ApplyTick보다 앞 — frames 범위 밖 조회 차단 (ReplayDirector.cs:424-428)
+9. [✓] 결정성 불변 (실측 tick 264 heroPos vs frame dist 0.0000)
+10. [✓] RoundManager diff = MaxRecordSeconds 프로퍼티+주석 3줄 추가만
+11. [✓] 컴파일 에러/워닝 0
 
 ## 참조 패턴
 
-성공 패턴 #7(코어 밖 오버레이 모드 — 엔딩) 재사용: RoundManager 휴면(Cleared) 위에 ReplayDirector가 중앙 틱 대행 구동. RoundManager 수정은 ResetUndoStack 1개(보호 블록 diff 0).
+성공 패턴 #7(코어 밖 오버레이 모드)의 연장 조정 — 신규 기록 없음(연출 조정 성격).
 
 ## 점수
 
-**97 / 100** (Major 0, Minor 5) — 컨벤션 11/12, 생명주기 9/9, 성능 9/10, 안전성 9/9, 기능 23/23, 스모크 17/17, 단순성 10/10, 완결성 9/10
+**94/100** (Major 1, Minor 3) — 기능 23/23, 스모크 17/17, 컨벤션 12/12, 나머지 만점. 감점은 스펙 감사 -5(아래 Major) + 95점 게이트 미충족 상한.
 
 ## 피드백
 
-Major: 없음.
-
-Minor:
-1. LandedOnClone 감지 기준 이중화 — 라이브는 "착지 엣지 ∧ 발밑 클론"(PlayerController.cs:123-126), 스캔은 "발밑 클론 엣지만"(ReplayDirector.cs:359-364). 클론 위로 걸어 올라간 경우 스캔만 고리로 계수 → 기준 통일 검토
-2. 압력판 수집 경로 불일치 — ReplayDirector.cs:138 FindObjectsByType 씬 전역 검색 (다른 기믹은 Bind 주입 — LevelManager.cs:205). Bind 인자로 통일 권장
-3. 스펙 무관 씬 변경 혼입 — SampleScene.unity 기존 텍스트 m_MaxSize 2건(BestFit=0이라 실효 없음, diff 위생)
-4. Next 버튼 클릭은 IsReplaying 가드 밖(CharacterSelectUI.cs:62 직행) — 리플레이 중 클릭 시 스킵+즉시 전환 동시(의도로 볼 수 있어 통과)
-5. 판 2개 이상 + 재눌림 시나리오 미실측(로직상 문제 없음, 단일 판 1회 눌림만 실측)
+- [Major] **스펙 감사 누락** — Planner 체크리스트에 "OnRingReached/타임라인/사전 스캔 유지" 조건 미기재. **구현은 정상 유지 실측 확인**(ReplayDirector.cs:74 선언, :329-402 스캔, :442-448 소비 — 코드 결함 아님, 문서 결함). 차기 회차부터 스펙의 "유지" 요구도 조건화할 것
+- [Minor] ReplayDirector.cs:479 — `_levelExit.GetComponent<Collider2D>()` 루프 패스당 1회 호출 (Bind 캐시 가능, 핫패스 아님)
+- [Minor] ReplayDirector.cs:530-536 — 흡입 도중 스킵 시 히어로가 보간 중간 지점 동결 (스펙 "즉시 중단" 부합, Unbind로 정리 — 기록만)
+- [Minor] ReplayDirector.cs:486-503 — 출구 인근에 압력판 있는 레벨이면 흡입 이동이 판을 스칠 수 있음 (현 레벨 구성 미발생, ResetGimmick이 복구)
 
 ## 수정 파일
 
-- Assets/Scripts/Level/PressurePlate.cs — OnPressed 이벤트 + EvaluatePressed() + LinkedDoor 프로퍼티(스캔용 접근 경로, Generator 편차 보고 후 수용)
-- Assets/Scripts/Level/Door.cs — OnOpened 이벤트
-- Assets/Scripts/Player/PlayerController.cs — OnLandedOnClone 이벤트 + IsCloneUnderfoot()(자기 제외)
-- Assets/Scripts/Level/LevelExit.cs — OnCleared 이벤트(전이 이전 발화, Cleared 재발화 가드)
-- Assets/Scripts/Managers/RoundManager.cs — ResetUndoStack() 1개(Cleared 가드, 보호 블록 diff 0)
-- Assets/Scripts/Managers/LevelManager.cs — ReplayDirector Bind/Unbind 배선 + IsReplaying 입력 누수 가드
-- Assets/Scripts/Level/PushableBox.cs — TryGetRecordedPosition()
-- Assets/Scripts/Clone/ClonePlayback.cs — _displayAlpha + SetDisplayAlpha()
-- Assets/Scripts/Clone/CharacterActor.cs — ApplyReplayOriginalLook()
-- Assets/Scripts/Replay/ReplayDirector.cs — 신규(사전 스캔 + 리플레이 구동 + 스킵/루프/후처리)
-- Assets/Scripts/UI/ReplayHudUI.cs — 신규(스킵 힌트 + 고조 pip)
-- Assets/Scenes/SampleScene.unity — ReplayDirector GO + ReplayHud UI + 참조 연결
+- Assets/Scripts/Replay/ReplayDirector.cs (471→554줄) — Bind 시그니처 확장(+LevelExit), 시간 프로퍼티 2종, BeginAbsorb/DriveAbsorb 흡입 연출, pip 호출 제거
+- Assets/Scripts/UI/ReplayHudUI.cs (71→43줄) — pip 로직 전면 제거(의도적 삭제, 게이트 diff 확인)
+- Assets/Scripts/UI/PaperHudUI.cs (43→58줄) — ReplayDirector 참조 + 리플레이 중 시간 분기
+- Assets/Scripts/Managers/LevelManager.cs — Bind 호출 1곳 인자 추가
+- Assets/Scripts/Managers/RoundManager.cs — MaxRecordSeconds 노출(순수 추가)
+- Assets/Scenes/SampleScene.unity — EscalationText 삭제 + PaperHUD._replayDirector 연결

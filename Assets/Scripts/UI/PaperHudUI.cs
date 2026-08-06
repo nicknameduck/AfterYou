@@ -1,4 +1,5 @@
 using AfterYou.Managers;
+using AfterYou.Replay;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,6 +16,9 @@ namespace AfterYou.UI
     {
         [SerializeField] private RoundManager _roundManager;
 
+        [Tooltip("리플레이 감독. 리플레이 중에는 남은 시간/경과를 리플레이 틱 기준으로 표시한다.")]
+        [SerializeField] private ReplayDirector _replayDirector;
+
         [Tooltip("사용 중인 클론 수 값 텍스트 (n / m)")]
         [SerializeField] private Text _cloneValue;
 
@@ -28,16 +32,27 @@ namespace AfterYou.UI
         {
             if (_roundManager == null) return;
 
+            // 리플레이 중엔 라운드가 Cleared로 휴면이라 RoundManager 값이 멈춰 있다.
+            // 그 구간만 감독의 틱 기준 시간으로 대체해 되감기 연출과 숫자가 함께 흐르게 한다.
+            bool isReplaying = _replayDirector != null && _replayDirector.IsReplaying;
+
             if (_cloneValue != null)
                 _cloneValue.text = $"{_roundManager.ConfirmedCount} / {_roundManager.CloneBudget}";
 
             if (_timeValue != null)
-                _timeValue.text = _roundManager.State == RoundState.Recording
-                    ? _roundManager.RemainingRecordSeconds.ToString("00.00")
-                    : "--.--";
+            {
+                if (isReplaying)
+                    _timeValue.text = _replayDirector.ReplayRemainingSeconds.ToString("00.00");
+                else
+                    _timeValue.text = _roundManager.State == RoundState.Recording
+                        ? _roundManager.RemainingRecordSeconds.ToString("00.00")
+                        : "--.--";
+            }
 
             if (_elapsedValue != null)
-                _elapsedValue.text = _roundManager.ElapsedSeconds.ToString("00.00");
+                _elapsedValue.text = isReplaying
+                    ? _replayDirector.ReplayElapsedSeconds.ToString("00.00")
+                    : _roundManager.ElapsedSeconds.ToString("00.00");
         }
     }
 }
