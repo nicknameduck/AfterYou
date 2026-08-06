@@ -110,6 +110,24 @@ namespace AfterYou.Level
             _rigidbody.MovePosition(frame.Position);
         }
 
+        /// <summary>기록된 궤적의 tick 위치를 조회한다(부수효과 0). 기록이 없으면 false.</summary>
+        /// <remarks>
+        /// 클램프 규약은 ClonePlayback.TryGetFuturePosition과 동일하다 — 궤적 밖은 마지막 프레임에서 정지하므로
+        /// 클램프가 곧 정답이다. 리플레이 사전 스캔이 각 틱의 박스 배치를 재현하는 데 쓴다.
+        /// </remarks>
+        public bool TryGetRecordedPosition(int tick, out Vector2 position)
+        {
+            if (_recording == null || _recording.FrameCount == 0)
+            {
+                position = default;
+                return false;
+            }
+
+            int index = Mathf.Clamp(tick, 0, _recording.FrameCount - 1);
+            position = _recording.GetFrame(index).Position;
+            return true;
+        }
+
         /// <summary>기록된 궤적이 실제로 박스를 움직였는가. 첫 프레임과 현재 위치 차이로 판정한다.</summary>
         public bool HasDisplacement(float epsilon)
         {

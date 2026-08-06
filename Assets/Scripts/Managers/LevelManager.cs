@@ -3,6 +3,7 @@ using AfterYou.Clone;
 using AfterYou.Core;
 using AfterYou.Ending;
 using AfterYou.Level;
+using AfterYou.Replay;
 using AfterYou.UI;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -38,6 +39,9 @@ namespace AfterYou.Managers
 
         [Tooltip("게임 시작 타이틀 패널(씬 Canvas 소속). 미할당이면 타이틀 없이 기존처럼 즉시 시작한다.")]
         [SerializeField] private GameObject _titlePanel;
+
+        [Tooltip("클리어 리플레이 감독(씬 상주). 미할당이면 리플레이 없이 기존 클리어 흐름 그대로 동작한다.")]
+        [SerializeField] private ReplayDirector _replayDirector;
 
         /// <summary>현재 로드된 캐릭터들. 다음 레벨 로드 시 이 리스트만으로 전부 파괴한다(클론으로 reparent돼도 커버).</summary>
         private readonly List<CharacterActor> _spawnedActors = new List<CharacterActor>();
@@ -113,6 +117,11 @@ namespace AfterYou.Managers
         /// <summary>진행 중인 라운드와 현재 레벨/캐릭터를 모두 정리한다. 레벨 교체와 엔딩 진입이 공유한다.</summary>
         private void CleanupCurrentLevel()
         {
+            // 0) 리플레이를 먼저 걷어낸다. 이 경로(다음 레벨 / ESC 타이틀 / 엔딩 진입) 전부를 여기서 커버한다.
+            //    파괴될 캐릭터/박스/기믹 참조를 붙잡은 채로 틱을 돌리면 다음 프레임에 죽은 참조를 만진다.
+            if (_replayDirector != null)
+                _replayDirector.Unbind();
+
             // 1) 진행 중인 라운드를 안전하게 종료한다. 참조(_characters)를 비우기 전에 RoundManager부터 정리해야
             //    전환 순간 LevelExit이 LiveCharacter를 읽어도 NRE가 나지 않는다.
             _roundManager.Teardown();
@@ -202,6 +211,11 @@ namespace AfterYou.Managers
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
             _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes, gimmicks,
                 types.ToArray(), cloneBudget);
+
+            // 7) 클리어 리플레이 감독에 이번 레벨의 구동 대상을 주입한다.
+            //    Initialize 이후여야 한다 — 캐릭터가 이미 초기 모드로 정렬된 뒤에 붙잡아야 상태가 어긋나지 않는다.
+            if (_replayDirector != null)
+                _replayDirector.Bind(_roundManager, _spawnedActors.ToArray(), _currentLevel.Boxes, gimmicks);
         }
 
         /// <summary>클리어 상태에서 다음 레벨로 넘어간다. N키와 Next 버튼(CharacterSelectUI)이 공용으로 호출한다.</summary>
@@ -316,6 +330,9 @@ namespace AfterYou.Managers
             }
 
             if (_roundManager.State != RoundState.Cleared) return;
+
+            // 리플레이 중에도 Enter/N은 그대로 받는다 — 같은 프레임에 리플레이 스킵(ReplayDirector)과
+            // 다음 레벨 로드가 함께 발동해 곧장 다음 스테이지로 넘어간다(사용자 확정 2026-08-06).
 
             // New Input System 전용 프로젝트라 구 Input.GetKeyDown은 예외를 던진다.
             Keyboard keyboard = Keyboard.current;

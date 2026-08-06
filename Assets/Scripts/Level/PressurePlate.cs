@@ -78,6 +78,19 @@ namespace AfterYou.Level
         /// <summary>현재 눌려 있는가(= Weight 합 >= 요구 무게).</summary>
         public bool IsPressed { get; private set; }
 
+        /// <summary>이 판에 연동된 문. 없으면 null. 리플레이 사전 스캔이 "판 눌림 = 문 열림" 고리를 세는 데 쓴다.</summary>
+        public Door LinkedDoor => _door;
+
+        /// <summary>
+        /// 눌리지 않음 → 눌림으로 전환된 순간에 1회 발화한다(뗄 때는 발화하지 않는다).
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 핸들러에서 상태 전환 메서드(SelectCharacter/ConfirmClone/RestartTake 등)를 호출하지 말 것.
+        ///   이 이벤트는 FixedUpdate 내부 = 중앙 틱 위상 안에서 발화하므로, 핸들러가 상태를 바꾸면
+        ///   같은 틱에서 기믹/클론 구동이 어긋난다. 연출·큐잉 전용이다.
+        /// </remarks>
+        public event System.Action OnPressed;
+
         private void Awake()
         {
             _plateCollider = GetComponent<Collider2D>();
@@ -120,6 +133,9 @@ namespace AfterYou.Level
 
             if (_door != null)
                 _door.SetOpen(IsPressed);
+
+            if (IsPressed)
+                OnPressed?.Invoke();
         }
 
         private void Update()
@@ -173,6 +189,15 @@ namespace AfterYou.Level
 
             return totalWeight;
         }
+
+        /// <summary>
+        /// "지금 이 배치라면 판이 눌리는가"만 묻는다. 부수효과 0 — 상태(IsPressed)/문/연출을 전혀 건드리지 않는다.
+        /// </summary>
+        /// <remarks>
+        /// 리플레이 사전 스캔 전용. 캐스트를 각 틱 위치에 배치한 뒤 호출해 눌림 틱을 미리 뽑는다.
+        /// 판정식은 FixedUpdate와 동일한 MeasureWeightOnPlate를 그대로 재사용한다(로직 복제 금지 — 두 벌이 되면 갈라진다).
+        /// </remarks>
+        public bool EvaluatePressed() => MeasureWeightOnPlate() >= _requiredWeight;
 
         private void ApplyVisual(bool isPressed)
         {

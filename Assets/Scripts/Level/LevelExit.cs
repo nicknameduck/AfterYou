@@ -18,6 +18,14 @@ namespace AfterYou.Level
         [SerializeField] private RoundManager _roundManager;
 
         /// <summary>
+        /// 라이브 캐릭터가 출구에 도달한 순간(= 클리어 전이 직전)에 1회 발화한다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 핸들러에서 상태 전환 메서드를 호출하지 말 것. 연출·큐잉 전용이다.
+        /// </remarks>
+        public event System.Action OnCleared;
+
+        /// <summary>
         /// 레벨 프리팹은 씬의 RoundManager를 직렬화 참조할 수 없다(프리팹→씬 참조 불가).
         /// LevelManager가 로드 시 주입한다.
         /// </summary>
@@ -36,6 +44,12 @@ namespace AfterYou.Level
 
             if (actor != _roundManager.LiveCharacter) return;
 
+            // Invoke만 가드한다 — 리플레이 중 히어로가 출구를 다시 통과해도(LiveCharacter 참조는 그대로다)
+            // 고리가 중복 발화하지 않게 한다. 상태 전환 "이전"에 발화하므로 여기서는 아직 Recording이다.
+            if (_roundManager.State != RoundState.Cleared)
+                OnCleared?.Invoke();
+
+            // 클리어 통지는 무조건 호출한다(내부에서 Cleared면 즉시 return하는 멱등 메서드다).
             _roundManager.OnLevelCleared();
         }
     }

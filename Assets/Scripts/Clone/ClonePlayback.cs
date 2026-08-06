@@ -31,6 +31,9 @@ namespace AfterYou.Clone
         /// <summary>페이드인 진행도(0=투명, 1=완전 공개). 한 번 오르면 되돌리지 않는다.</summary>
         private float _revealProgress;
 
+        /// <summary>페이드인이 도달할 목표 알파. 기본은 클론 룩(CloneAlpha)이고, 리플레이 히어로만 1로 올린다.</summary>
+        private float _displayAlpha = CloneAlpha;
+
         public int FrameCount => _recording != null ? _recording.FrameCount : 0;
 
         private void Awake()
@@ -42,6 +45,22 @@ namespace AfterYou.Clone
         public void SetRecording(CloneRecording recording)
         {
             _recording = recording;
+
+            // 룩을 기본(클론)으로 되돌린다 — 리플레이가 올려둔 히어로 알파가 다음 라운드의 클론으로 새지 않게.
+            _displayAlpha = CloneAlpha;
+        }
+
+        /// <summary>
+        /// 페이드인 목표 알파를 바꾼다. 리플레이에서 히어로만 원본 룩(1)으로 올릴 때 쓴다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 알파 소유권은 UpdateReveal 단독이다. 호출부가 SpriteRenderer.color.a를 직접 대입하면
+        ///   바로 다음 ApplyTick이 페이드 값으로 덮어써 1프레임 번쩍임이 난다. 반드시 이 메서드로만 바꾼다.
+        /// ⚠ SetRecording이 기본값으로 되돌리므로 반드시 SetRecording "이후"에 호출해야 한다.
+        /// </remarks>
+        public void SetDisplayAlpha(float alpha)
+        {
+            _displayAlpha = alpha;
         }
 
         /// <summary>
@@ -120,7 +139,7 @@ namespace AfterYou.Clone
 
             // CharacterActor.SetMode가 세팅한 RGB(정체성 색)는 보존하고 알파만 덮어쓴다.
             Color color = _spriteRenderer.color;
-            color.a = CloneAlpha * _revealProgress;
+            color.a = _displayAlpha * _revealProgress;
             _spriteRenderer.color = color;
         }
 

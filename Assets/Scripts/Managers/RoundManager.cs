@@ -681,6 +681,22 @@ namespace AfterYou.Managers
         }
 
         /// <summary>
+        /// 확정 스택(undo 스택)만 비운다. 클리어 리플레이가 끝난 뒤(완주/스킵 공통) ReplayDirector가 1회 호출한다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ Cleared 가드 필수. Recording 중에 잘못 호출되면 재생 목록만 사라지고 액터는 Clone 모드로 남아
+        ///   "화면에는 있는데 재생되지 않는" desync가 된다. 클리어 이후에만 의미가 있는 정리다.
+        ///
+        /// 클론 액터의 모드/부모/궤적은 건드리지 않는다 — 다음 전환(Teardown/Initialize)이 통째로 정리한다.
+        /// </remarks>
+        public void ResetUndoStack()
+        {
+            if (_state != RoundState.Cleared) return;
+
+            _confirmedSlots.Clear();
+        }
+
+        /// <summary>
         /// 킬존(KillZone)이 라이브의 사망을 통지할 때 호출한다. 녹화 중이면 현재 테이크를 재시작한다.
         /// </summary>
         /// <remarks>

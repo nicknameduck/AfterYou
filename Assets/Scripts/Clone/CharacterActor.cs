@@ -187,6 +187,26 @@ namespace AfterYou.Clone
                 gameObject.SetActive(false);
         }
 
+        /// <summary>
+        /// 클리어 리플레이에서 히어로(마지막 라이브)만 원본 룩으로 되돌린다 —
+        /// 재생은 클론과 똑같이 하되 스캔라인 없이 불투명하게 보여 "지금의 나"가 구분되게 한다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 반드시 SetMode(Clone) + Playback.SetRecording "이후"에 호출할 것. 둘 다 이 설정을 되돌린다.
+        ///
+        /// ⚠ 스프라이트 알파를 직접 대입하지 않는다. 알파 소유권은 ClonePlayback.UpdateReveal 단독이므로
+        ///   여기서 1을 대입해봤자 다음 ApplyTick이 페이드 값(0에서 시작)으로 덮어써 시작 프레임에 번쩍인다.
+        ///   목표 알파만 올려두고 실제 대입은 페이드인에 맡긴다.
+        /// </remarks>
+        public void ApplyReplayOriginalLook()
+        {
+            if (_spriteRenderer != null && _defaultMaterial != null)
+                _spriteRenderer.sharedMaterial = _defaultMaterial;
+
+            if (_playback != null)
+                _playback.SetDisplayAlpha(1f);
+        }
+
         /// <summary>현재 물리 위치(Rigidbody2D 기준. transform.position은 보간값이라 권위가 아니다).</summary>
         public Vector2 Position => _rigidbody.position;
 

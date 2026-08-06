@@ -32,6 +32,15 @@ namespace AfterYou.Level
         /// <summary>현재 열려 있는가. 닫힘이 기본 상태다.</summary>
         public bool IsOpen { get; private set; }
 
+        /// <summary>
+        /// 문이 열린 순간에 1회 발화한다(닫힐 때는 발화하지 않는다). Awake의 초기 ApplyState(false)도 발화하지 않는다.
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 핸들러에서 상태 전환 메서드를 호출하지 말 것. PressurePlate.FixedUpdate = 중앙 틱 위상 안에서
+        ///   연쇄 발화되므로, 핸들러가 상태를 바꾸면 같은 틱에서 위상이 어긋난다. 연출·큐잉 전용이다.
+        /// </remarks>
+        public event System.Action OnOpened;
+
         private void Awake()
         {
             // 씬 시작 시 시각/물리 상태를 코드 상태(닫힘)와 강제로 일치시킨다.
@@ -57,6 +66,9 @@ namespace AfterYou.Level
 
             if (_renderer != null)
                 _renderer.color = isOpen ? _openColor : _closedColor;
+
+            if (isOpen)
+                OnOpened?.Invoke();
         }
     }
 }

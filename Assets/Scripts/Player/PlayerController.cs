@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AfterYou.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -57,9 +58,34 @@ namespace AfterYou.Player
         private float _savedGravityScale;
         private float _wallJumpLockoutCounter;
 
+        /// <summary>직전 프레임의 접지 상태. 착지(공중 → 접지) 엣지 검출 전용이다.</summary>
+        private bool _wasGrounded;
+
+        /// <summary>Clone(9) 레이어 전용 오버랩 필터. "발밑에 클론이 있는가"만 묻는다(_groundLayer와 별개 — 정체성별로 마스크가 다르다).</summary>
+        private ContactFilter2D _cloneFilter;
+
+        /// <summary>
+        /// 발밑 클론 질의의 non-alloc 결과 버퍼. 매 프레임 질의하므로 배열 반환 오버로드를 쓰면 GC가 계속 돈다.
+        /// </summary>
+        private readonly List<Collider2D> _cloneOverlapBuffer = new List<Collider2D>();
+
+        /// <summary>
+        /// 공중에서 클론 위로 착지한 순간에 1회 발화한다("남의 등을 밟았다" 협력 고리).
+        /// </summary>
+        /// <remarks>
+        /// ⚠ 핸들러에서 상태 전환 메서드를 호출하지 말 것. 연출·큐잉 전용이다.
+        /// </remarks>
+        public event System.Action OnLandedOnClone;
+
         private void Awake()
         {
             _rigidbody = GetComponent<Rigidbody2D>();
+
+            // 클론 검출 마스크는 정체성과 무관하게 Clone 레이어 하나로 고정한다.
+            // useTriggers=false: QueriesHitTriggers=1이라 기본값이면 트리거(Exit 등)까지 잡힌다(PressurePlate와 동일 규약).
+            int cloneLayer = LayerMask.NameToLayer("Clone");
+            _cloneFilter = new ContactFilter2D { useTriggers = false };
+            _cloneFilter.SetLayerMask(cloneLayer >= 0 ? 1 << cloneLayer : 0);
 
             // 인스턴스별 액션 사본을 갖는다(Unity PlayerInput이 멀티플레이에서 쓰는 공식 패턴).
             // 에셋을 공유하면 캐릭터 3명이 같은 InputAction 객체를 쓰게 되고, OnEnable/OnDisable에
@@ -91,6 +117,12 @@ namespace AfterYou.Player
 
             // 접지 체크: 발밑 박스에 지면 레이어가 겹치는지
             _isGrounded = Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _groundLayer);
+
+            // 협력 고리: 착지 엣지(공중 → 접지)에 발밑이 클론이면 "남의 등을 밟았다".
+            // 엣지에서만 보는 이유 — 매 프레임 보면 클론 위에 서 있는 동안 계속 발화한다.
+            if (_isGrounded && !_wasGrounded && IsCloneUnderfoot())
+                OnLandedOnClone?.Invoke();
+            _wasGrounded = _isGrounded;
 
             // 벽점프 락아웃: 재부착·수평 덮어쓰기를 잠시 막는다. 착지하면 즉시 해제(입력 무시 구간 최소화).
             if (_isGrounded)
@@ -154,6 +186,36 @@ namespace AfterYou.Player
         {
             _rigidbody.linearVelocity = new Vector2(_rigidbody.linearVelocity.x, 0f);
             _rigidbody.AddForce(Vector2.up * _jumpForce, ForceMode2D.Impulse);
+        }
+
+        /// <summary>
+        /// 발밑 접지 박스 안에 클론이 있는지 질의한다(부수효과 0).
+        /// </summary>
+        /// <remarks>
+        /// 기하는 접지 판정과 완전히 동일한 것(_groundCheck.position / _groundCheckSize)을 재사용한다 —
+        /// "밟았다"의 기준이 두 벌이 되면 이벤트 틱과 실제 접지가 갈라진다.
+        ///
+        /// 리플레이 사전 스캔이 임의 틱 위치에 배치한 뒤에도 호출하므로 상태를 남기지 않는다.
+        ///
+        /// ⚠ 자기 콜라이더 제외: QueriesStartInColliders=1이라, 이 캐릭터 자신이 Clone 레이어일 때
+        ///   (리플레이 캐스트로 재생될 때) 자기 몸통이 잡혀 상시 true가 된다. 방어적으로 걸러낸다.
+        /// </remarks>
+        public bool IsCloneUnderfoot()
+        {
+            if (_groundCheck == null) return false;
+
+            Physics2D.OverlapBox(_groundCheck.position, _groundCheckSize, 0f, _cloneFilter, _cloneOverlapBuffer);
+
+            for (int i = 0; i < _cloneOverlapBuffer.Count; i++)
+            {
+                Collider2D other = _cloneOverlapBuffer[i];
+                if (other == null) continue;
+                if (other.transform.IsChildOf(transform)) continue;
+
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
