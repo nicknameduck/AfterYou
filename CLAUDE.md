@@ -30,6 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Unity MCP** 연동 (`.mcp.json` + `com.coplaydev.unity-mcp` 패키지) — Editor를 MCP로 제어
 - **하네스 워크플로우** (`/harness`, `/harness-refine` + `.claude/harness-eval.md`, `.claude/dashboard/`)
 - **셸 검색 차단 훅** (`.claude/scripts/block-search-in-shell.ps1`)
+- **Unity MCP 세션 잠금 훅** (`.claude/scripts/unity-mcp-lock.ps1`) — 멀티 세션 동시 Unity 조작 방지. 다른 세션 점유로 차단되면 Unity 작업은 보류하고 파일/문서 작업 우선 또는 사용자 보고 후 대기(우회 금지). 락은 상대 턴 종료 시 자동 해제(TTL 15분)
 - 관련 프로젝트: LostPages(`D:\LostPages\`), CatLibrary(`D:\CatLibrary\`)
 
 ## 오케스트레이션 운용 기준 (하네스 중심)

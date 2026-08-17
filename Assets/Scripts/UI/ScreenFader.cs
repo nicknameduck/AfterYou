@@ -37,7 +37,19 @@ namespace AfterYou.UI
             _overlay.raycastTarget = true;
 
             yield return Fade(0f, 1f, _fadeOutDuration);
-            onCovered?.Invoke();
+
+            // 콜백(레벨 로드 등)이 예외를 던져도 페이드 상태를 복구한다 — 예외가 코루틴을 죽이면
+            // IsFading이 true로 영구 고착되어 이후 모든 전환이 조용히 무시된다(2026-08-18 실측:
+            // 레벨 로드 중 NRE 1회 → "다음 스테이지가 안 넘어감"). 예외는 삼키지 않고 다시 로그한다.
+            try
+            {
+                onCovered?.Invoke();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e, this);
+            }
+
             yield return Fade(1f, 0f, _fadeInDuration);
 
             _overlay.raycastTarget = false;

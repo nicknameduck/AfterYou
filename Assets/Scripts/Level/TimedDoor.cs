@@ -29,6 +29,9 @@ namespace AfterYou.Level
         [Tooltip("열렸을 때 색. 알파를 낮춰 '통과 가능'을 읽히게 한다.")]
         [SerializeField] private Color _openColor = new Color(0.55f, 0.32f, 0.18f, 0.2f);
 
+        [Tooltip("색 페이드 시간(초). Door와 동일한 값으로 개폐 연출을 통일한다.")]
+        [SerializeField] private float _fadeDuration = 0.1f;
+
         [Header("Timing")]
         [Tooltip("열린 뒤 자동으로 닫히기까지의 시간(초).")]
         [SerializeField] private float _openSeconds = 3f;
@@ -42,10 +45,29 @@ namespace AfterYou.Level
         /// <summary>현재 열려 있는가(IActivatable 계약). 스위치의 자기 동기화가 읽는다.</summary>
         public bool IsActivated => _isOpen;
 
+        /// <summary>페이드가 향하는 목표 색. Update가 매 프레임 이 색으로 수렴시킨다(Door와 동일 패턴).</summary>
+        private Color _targetColor;
+
         private void Awake()
         {
             // 씬 시작 시 시각/물리 상태를 코드 상태(닫힘)와 강제로 일치시킨다(Door.Awake와 동일).
             ApplyState(false);
+
+            // 시작 상태는 페이드 없이 즉시 일치시킨다 — 씬 로드 직후 어중간한 색에서 출발하지 않도록.
+            if (_renderer != null)
+                _renderer.color = _targetColor;
+        }
+
+        private void Update()
+        {
+            // 연출 전용 페이드. 콜라이더(게임 판정)와 틱 타이머는 즉시/틱 기반이므로 규칙에 영향 없다.
+            if (_renderer == null || _renderer.color == _targetColor) return;
+
+            // MoveTowards의 델타는 "초당 색 거리"다. 닫힘↔열림 전체 거리를 _fadeDuration으로 나눠,
+            // 상태 전환 시 정확히 _fadeDuration초에 목표에 도착하는 등속 페이드로 환산한다(Door와 동일).
+            float colorDistance = Vector4.Distance(_closedColor, _openColor);
+            float speed = _fadeDuration > 0f ? colorDistance / _fadeDuration : float.MaxValue;
+            _renderer.color = Vector4.MoveTowards(_renderer.color, _targetColor, speed * Time.deltaTime);
         }
 
         /// <summary>스위치가 켜지면 열고 자동 닫힘 타이머를 건다. 꺼지면 즉시 닫는다.</summary>
@@ -90,8 +112,8 @@ namespace AfterYou.Level
             if (_collider != null)
                 _collider.enabled = !isOpen;
 
-            if (_renderer != null)
-                _renderer.color = isOpen ? _openColor : _closedColor;
+            // 색은 즉시 대입하지 않고 목표만 갱신한다 — 실제 수렴은 Update의 페이드가 담당(Door와 동일).
+            _targetColor = isOpen ? _openColor : _closedColor;
         }
     }
 }

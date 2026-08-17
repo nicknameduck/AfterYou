@@ -119,8 +119,6 @@ namespace AfterYou.Replay
         /// <summary>완주 직후 출구 흡입 연출 중인가. 이 동안 틱 구동은 정지하고 히어로 위치만 보간한다.</summary>
         private bool _isAbsorbing;
         private float _absorbElapsed;
-        private Vector2 _absorbStartPosition;
-        private Vector2 _absorbTarget;
 
         /// <summary>
         /// 리플레이 중인가.
@@ -458,11 +456,12 @@ namespace AfterYou.Replay
         }
 
         /// <summary>
-        /// 완주 시점의 흡입 연출을 개시한다. 히어로나 출구가 없으면 흡입 없이 곧장 루프 대기로 넘어간다.
+        /// 완주 시점의 페이드아웃 연출을 개시한다. 히어로나 출구가 없으면 연출 없이 곧장 루프 대기로 넘어간다.
         /// </summary>
         /// <remarks>
-        /// 반복 재생이라 패스마다 다시 불린다 — 시작 위치와 경과를 매번 새로 잡아야 두 번째 패스부터
-        /// 흡입이 즉시 끝나거나 엉뚱한 지점에서 출발하지 않는다.
+        /// 이전의 "출구 중심 흡입"(위치 보간)은 출구를 세로로 키운 뒤 히어로가 문 한가운데로 떠오르는
+        /// 부작용이 있어 폐기(2026-08-17 사용자 결정) — 문에 닿은 그 자리에서 점점 사라지는 것으로 대체.
+        /// 반복 재생이라 패스마다 다시 불린다 — 경과를 매번 새로 잡아야 두 번째 패스부터 즉시 끝나지 않는다.
         /// </remarks>
         private void BeginAbsorb()
         {
@@ -473,16 +472,11 @@ namespace AfterYou.Replay
                 return;
             }
 
-            // 출구의 판정 콜라이더 중심으로 빨아들인다(RequireComponent(Collider2D)로 존재가 보장된다).
-            // 피벗(transform.position)이 아니라 bounds.center여야 시각적으로 "문 한가운데"로 들어간다.
-            _absorbStartPosition = _hero.Position;
-            _absorbTarget = _levelExit.GetComponent<Collider2D>().bounds.center;
-
             _absorbElapsed = 0f;
             _isAbsorbing = true;
         }
 
-        /// <summary>흡입 1스텝. 틱 구동 밖의 순수 위치 보간이라 클론 재생 결정성에 영향을 주지 않는다.</summary>
+        /// <summary>페이드아웃 1스텝. 틱 구동 밖의 순수 알파 보간이라 클론 재생 결정성에 영향을 주지 않는다.</summary>
         private void DriveAbsorb()
         {
             // 시간 소스는 fixedDeltaTime으로 통일한다 — realtimeSinceStartup과 섞으면 스텝 누적이 어긋난다.
@@ -490,7 +484,7 @@ namespace AfterYou.Replay
 
             if (_absorbElapsed >= _absorbDuration)
             {
-                _hero.SetPosition(_absorbTarget); // 보간 잔차 없이 정확히 스냅시킨다.
+                _hero.Playback.SetDisplayAlpha(0f); // 보간 잔차 없이 완전히 사라진 상태로 스냅.
 
                 _isAbsorbing = false;
                 _isWaitingLoop = true;
@@ -499,12 +493,17 @@ namespace AfterYou.Replay
             }
 
             float t = Mathf.SmoothStep(0f, 1f, _absorbElapsed / _absorbDuration);
-            _hero.SetPosition(Vector2.Lerp(_absorbStartPosition, _absorbTarget, t));
+            _hero.Playback.SetDisplayAlpha(1f - t);
         }
 
         /// <summary>반복 재생 준비 — 기믹/캐스트/박스를 전부 처음 상태로 되돌린다.</summary>
         private void ResetForLoop()
         {
+            // 완주 페이드아웃으로 투명해진 히어로를 되살린다 — 위치는 ResetToStart가 되돌리지만
+            // 표시 알파는 별도 채널이라 명시 복원이 필요하다.
+            if (_hero != null)
+                _hero.Playback.SetDisplayAlpha(1f);
+
             for (int i = 0; i < _gimmicks.Length; i++)
                 _gimmicks[i].ResetGimmick();
 
@@ -534,6 +533,10 @@ namespace AfterYou.Replay
             _isPlaying = false;
             _isWaitingLoop = false;
             _isAbsorbing = false;
+
+            // 페이드 도중/완료 상태에서 스킵해도 히어로가 반투명·투명으로 남지 않게 복원한다.
+            if (_hero != null)
+                _hero.Playback.SetDisplayAlpha(1f);
 
             RunPostProcessOnce();
 

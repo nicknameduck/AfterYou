@@ -6,7 +6,8 @@ namespace AfterYou.Level
 {
     /// <summary>
     /// 밟으면 잠시 후 무너지는 발판. 최초 점유 틱에 카운트다운을 래치하고, 이후 점유 여부와 무관하게
-    /// 매 틱 줄여 0에 도달하면 붕괴(콜라이더 off + 스프라이트 소멸)한다.
+    /// 매 틱 줄여 0에 도달하면 붕괴(콜라이더 off + 페이드 아웃)한다.
+    /// 붕괴 후 _respawnSeconds가 지나면 재생성(콜라이더 on + 페이드 인 + 재래치 가능)된다.
     /// </summary>
     /// <remarks>
     /// 중앙 틱 규약: 자체 Update/FixedUpdate 없음 — RoundManager가 DriveGimmickTick으로 구동한다.
@@ -39,12 +40,18 @@ namespace AfterYou.Level
         [Tooltip("최초로 밟힌 뒤 붕괴까지의 시간(초).")]
         [SerializeField] private float _crumbleSeconds = 1.5f;
 
+        [Tooltip("붕괴 후 재생성까지의 시간(초).")]
+        [SerializeField] private float _respawnSeconds = 5f;
+
         [Header("Visual")]
         [SerializeField] private SpriteRenderer _renderer;
         [Tooltip("안정 상태 색.")]
         [SerializeField] private Color _stableColor = new Color(0.6f, 0.55f, 0.4f, 1f);
         [Tooltip("붕괴 임박 경고색. 카운트다운 진행에 따라 이 색으로 보간된다(예측 가능해야 한다).")]
         [SerializeField] private Color _crumblingColor = new Color(0.85f, 0.3f, 0.2f, 1f);
+
+        [Tooltip("붕괴/재생성 색 페이드 시간(초). Door/TimedDoor와 동일한 값으로 소멸 연출을 통일한다.")]
+        [SerializeField] private float _fadeDuration = 0.1f;
 
         private Collider2D _platformCollider;
         private ContactFilter2D _contactFilter;
@@ -64,6 +71,12 @@ namespace AfterYou.Level
         /// <summary>래치 시점의 총 틱 수(경고색 보간 분모).</summary>
         private int _totalTicks;
 
+        /// <summary>재생성까지 남은 틱. 붕괴 시점에 래치된다.</summary>
+        private int _respawnTicks;
+
+        /// <summary>페이드가 향하는 목표 색. Update가 매 프레임 이 색으로 수렴시킨다(Door와 동일 패턴).</summary>
+        private Color _targetColor;
+
         private void Awake()
         {
             _platformCollider = GetComponent<Collider2D>();
@@ -71,14 +84,40 @@ namespace AfterYou.Level
             _contactFilter = new ContactFilter2D { useTriggers = false };
             _contactFilter.SetLayerMask(_detectionMask);
 
+            _targetColor = _stableColor;
             if (_renderer != null)
                 _renderer.color = _stableColor;
         }
 
-        /// <summary>중앙 틱: 최초 점유에 카운트다운을 래치하고, 이후 매 틱 줄여 0에 붕괴한다.</summary>
+        private void Update()
+        {
+            // 연출 전용 페이드. 붕괴/재생성 판정(콜라이더·틱 카운트)은 전부 DriveGimmickTick에서
+            // 틱 기반으로 끝나므로, 이 Update는 중앙 틱 규약(게임 로직의 자체 구동 금지)을 깨지 않는다.
+            if (_renderer == null || _renderer.color == _targetColor) return;
+
+            // 속도 분자는 "가장 먼 전환"(안정색 ↔ 붕괴 잔상)의 색 거리 — 붕괴/재생성 전환이
+            // 정확히 _fadeDuration초에 도착하도록 환산한다. 경고색 보간은 틱마다 목표가 조금씩
+            // 이동하므로 이 속도면 사실상 즉시 추종한다(연출 차이 없음).
+            Color crumbledColor = _crumblingColor;
+            crumbledColor.a = CrumbledAlpha;
+            float colorDistance = Vector4.Distance(_stableColor, crumbledColor);
+            float speed = _fadeDuration > 0f ? colorDistance / _fadeDuration : float.MaxValue;
+            _renderer.color = Vector4.MoveTowards(_renderer.color, _targetColor, speed * Time.deltaTime);
+        }
+
+        /// <summary>중앙 틱: 최초 점유에 카운트다운을 래치하고, 이후 매 틱 줄여 0에 붕괴한다.
+        /// 붕괴 후에는 재생성 카운트다운으로 전환되어 0에 도달하면 초기 상태로 복원된다.</summary>
         public void DriveGimmickTick(int tick)
         {
-            if (_hasCrumbled) return; // 붕괴 후에는 질의 스킵 — disabled 콜라이더 bounds 무효
+            if (_hasCrumbled)
+            {
+                // 붕괴 상태: 점유 질의는 계속 스킵(disabled 콜라이더 bounds 무효), 재생성만 센다.
+                // 실시간이 아니라 틱으로 세므로 클론 재생/리플레이에서 같은 틱에 재생성된다(결정성).
+                _respawnTicks--;
+                if (_respawnTicks <= 0)
+                    Respawn();
+                return;
+            }
 
             if (!_isTriggered)
             {
@@ -104,10 +143,14 @@ namespace AfterYou.Level
             _hasCrumbled = false;
             _remainingTicks = 0;
             _totalTicks = 0;
+            _respawnTicks = 0;
 
             if (_platformCollider != null)
                 _platformCollider.enabled = true;
 
+            // 리셋은 페이드 없이 즉시 복원한다 — 라운드 전환 시 잔상에서 서서히 살아나는 연출은
+            // "재생성"과 혼동을 부른다(리셋 = 순간 복원, 재생성 = 페이드 인으로 구분).
+            _targetColor = _stableColor;
             if (_renderer != null)
                 _renderer.color = _stableColor;
         }
@@ -142,25 +185,41 @@ namespace AfterYou.Level
         /// <summary>카운트다운 진행도(0→1)에 따라 안정색 → 경고색으로 보간한다.</summary>
         private void UpdateWarningVisual()
         {
-            if (_renderer == null) return;
-
             float progress = 1f - (float)_remainingTicks / _totalTicks;
-            _renderer.color = Color.Lerp(_stableColor, _crumblingColor, progress);
+            _targetColor = Color.Lerp(_stableColor, _crumblingColor, progress);
         }
 
         private void Crumble()
         {
             _hasCrumbled = true;
 
+            // 재생성 카운트다운 래치. 붕괴와 동일하게 틱으로 환산해 결정성을 유지한다.
+            _respawnTicks = Mathf.Max(1, Mathf.CeilToInt(_respawnSeconds / Time.fixedDeltaTime));
+
             if (_platformCollider != null)
                 _platformCollider.enabled = false;
 
-            if (_renderer != null)
-            {
-                Color color = _crumblingColor;
-                color.a = CrumbledAlpha;
-                _renderer.color = color;
-            }
+            // 즉시 대입하지 않고 목표만 바꾼다 — Update의 페이드가 잔상 알파까지 서서히 수렴시킨다.
+            Color color = _crumblingColor;
+            color.a = CrumbledAlpha;
+            _targetColor = color;
+        }
+
+        /// <summary>재생성: 콜라이더 복구 + 래치 해제(다시 밟으면 다시 무너진다) + 안정색으로 페이드 인.</summary>
+        /// <remarks>재생성 순간 그 자리에 캐릭터/박스가 있어도 무조건 켠다 — 라이브(Dynamic)는 물리
+        /// 솔버가 밀어내고, 클론(Kinematic)은 원래 콜라이더를 통과하므로 끼임이 문제되지 않는다.</remarks>
+        private void Respawn()
+        {
+            _isTriggered = false;
+            _hasCrumbled = false;
+            _remainingTicks = 0;
+            _totalTicks = 0;
+
+            if (_platformCollider != null)
+                _platformCollider.enabled = true;
+
+            // 리셋과 달리 페이드 인으로 살아난다(Update가 수렴).
+            _targetColor = _stableColor;
         }
     }
 }

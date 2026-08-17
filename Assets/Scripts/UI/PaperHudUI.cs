@@ -25,8 +25,17 @@ namespace AfterYou.UI
         [Tooltip("녹화 남은 시간 값 텍스트. 녹화 중이 아니면 --.--")]
         [SerializeField] private Text _timeValue;
 
+        [Tooltip("남은 시간 칼럼 전체(라벨+밑줄+값). 무제한 녹화(RoundManager.HasRecordLimit == false)면 통째로 숨긴다.")]
+        [SerializeField] private GameObject _timeSection;
+
         [Tooltip("레벨 시작 후 경과 시간 값 텍스트. 클리어 시 정지한다.")]
         [SerializeField] private Text _elapsedValue;
+
+        private void Start()
+        {
+            if (_timeSection != null && _roundManager != null)
+                _timeSection.SetActive(_roundManager.HasRecordLimit);
+        }
 
         private void Update()
         {

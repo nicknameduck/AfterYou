@@ -42,7 +42,7 @@ namespace AfterYou.Managers
         private ITickGimmick[] _gimmicks;
 
         [Header("Recording")]
-        [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다.")]
+        [Tooltip("한 테이크의 시간 상한. 초과하면 자동 확정된다. 0 이하 = 무제한(자동 확정 없음, HUD 남은 시간 숨김).")]
         [SerializeField] private float _maxRecordSeconds = 15f;
 
         [Header("Hierarchy")]
@@ -115,6 +115,9 @@ namespace AfterYou.Managers
 
         /// <summary>녹화 시간 상한(초). 리플레이 HUD가 남은 시간 카운트다운 기준으로 쓴다.</summary>
         public float MaxRecordSeconds => _maxRecordSeconds;
+
+        /// <summary>시간 제한 유무. 무제한(상한 0 이하)이면 자동 확정이 없고 HUD가 남은 시간 칼럼을 숨긴다.</summary>
+        public bool HasRecordLimit => _maxRecordSeconds > 0f;
 
         /// <summary>레벨 시작 후 경과 시간(초). 클리어 순간의 값에서 정지한다. HUD "사용한 총 시간" 표시용.</summary>
         public float ElapsedSeconds
@@ -318,8 +321,8 @@ namespace AfterYou.Managers
             // 3) 틱 증가
             _tick++;
 
-            // 4) 시간 상한 도달 시 자동 확정
-            if (_tick >= MaxTicks)
+            // 4) 시간 상한 도달 시 자동 확정 (무제한 모드에선 스킵)
+            if (HasRecordLimit && _tick >= MaxTicks)
                 ConfirmClone();
         }
 

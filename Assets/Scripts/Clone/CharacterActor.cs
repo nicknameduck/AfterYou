@@ -32,6 +32,9 @@ namespace AfterYou.Clone
         [Tooltip("클론 모드 전용 머티리얼(스캔라인 고스트). 미할당이면 머티리얼 스왑 없이 동작.")]
         [SerializeField] private Material _cloneMaterial;
 
+        [Tooltip("라이브(조작 중) 캐릭터 머리 위 ▼ 마커. 미할당이면 표시 없이 동작.")]
+        [SerializeField] private GameObject _liveMarker;
+
         /// <summary>미할당 경고는 캐릭터/모드 전환마다 반복되므로 프로세스당 1회만 남긴다.</summary>
         private static bool _hasWarnedMissingCloneMaterial;
 
@@ -153,6 +156,10 @@ namespace AfterYou.Clone
             // 4) 컴포넌트 on/off — 라이브만 조작, 클론만 재생.
             _playerController.enabled = mode == CharacterMode.Live;
             _playback.enabled = mode == CharacterMode.Clone;
+
+            // 라이브 마커 — "지금 조작 중인 나"를 머리 위 ▼로 표시. 클론/대기에선 숨긴다.
+            if (_liveMarker != null)
+                _liveMarker.SetActive(mode == CharacterMode.Live);
 
             // 라이브는 스프라이트를 뒤집지 않는다(PlayerController에 flip 로직 없음).
             // 클론으로 쓰이며 뒤집힌 채 남은 flipX를 여기서 정리한다.

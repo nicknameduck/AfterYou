@@ -14,6 +14,39 @@
             "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude/scripts/block-search-in-shell.ps1"
           }
         ]
+      },
+      {
+        "matcher": "mcp__UnityMCP__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude/scripts/unity-mcp-lock.ps1",
+            "timeout": 15,
+            "statusMessage": "Checking Unity MCP session lock"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude/scripts/unity-mcp-lock.ps1 -Release",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude/scripts/unity-mcp-lock.ps1 -Release",
+            "timeout": 15
+          }
+        ]
       }
     ]
   }

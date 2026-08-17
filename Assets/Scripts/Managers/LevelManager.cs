@@ -207,6 +207,11 @@ namespace AfterYou.Managers
             for (int i = 0; i < killZones.Length; i++)
                 killZones[i].BindRoundManager(_roundManager);
 
+            // 포탈도 프롬프트/입력의 Recording 상태 게이트용으로 RoundManager가 필요하다(킬존과 동일 주입).
+            IdentityPortal[] portals = _currentLevel.GetComponentsInChildren<IdentityPortal>(true);
+            for (int i = 0; i < portals.Length; i++)
+                portals[i].BindRoundManager(_roundManager);
+
             // 6) 라운드 구동 — 반드시 SetActive(true) 이후여야 한다.
             //    Awake가 끝난 뒤라야 Initialize의 OverrideSpawnPosition이 Awake의 rb.position 캡처를 덮어쓴다.
             _roundManager.Initialize(_spawnedActors.ToArray(), _currentLevel.SpawnPoint, _currentLevel.Boxes, gimmicks,
@@ -304,14 +309,14 @@ namespace AfterYou.Managers
             Keyboard debugKeyboard = Keyboard.current;
             if (debugKeyboard != null)
             {
-                if (debugKeyboard.pageDownKey.wasPressedThisFrame)
+                if (debugKeyboard.pageUpKey.wasPressedThisFrame)
                 {
                     // 엔딩 중 강제 이동이면 엔딩 무대를 먼저 걷어낸다 — 안 그러면 봇/배경이 새 레벨 위에 남는다.
                     if (_isEnding) { _endingSequence.Stop(); _isEnding = false; }
                     LoadLevel((_currentIndex + 1) % _levels.Length);
                     return;
                 }
-                if (debugKeyboard.pageUpKey.wasPressedThisFrame)
+                if (debugKeyboard.pageDownKey.wasPressedThisFrame)
                 {
                     if (_isEnding) { _endingSequence.Stop(); _isEnding = false; }
                     LoadLevel((_currentIndex - 1 + _levels.Length) % _levels.Length);

@@ -61,6 +61,17 @@ namespace AfterYou.Clone
         public void SetDisplayAlpha(float alpha)
         {
             _displayAlpha = alpha;
+
+            // 즉시 반영 — 리플레이 완주 페이드아웃은 틱 구동(ApplyTick→UpdateReveal)이 멈춘 상태에서
+            // 매 스텝 호출되므로, 저장만 하면 알파가 화면에 도달하지 않는다(완주 후 "안 사라짐" 버그).
+            // UpdateReveal과 같은 식(_displayAlpha × _revealProgress)이라 이후 ApplyTick과 충돌하지 않고,
+            // 알파 소유권은 여전히 이 클래스 단독이다.
+            if (_spriteRenderer != null)
+            {
+                Color color = _spriteRenderer.color;
+                color.a = _displayAlpha * _revealProgress;
+                _spriteRenderer.color = color;
+            }
         }
 
         /// <summary>
